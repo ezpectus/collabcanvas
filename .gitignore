@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+out/
+*.user
+.vs/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Env & OS
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+nul
