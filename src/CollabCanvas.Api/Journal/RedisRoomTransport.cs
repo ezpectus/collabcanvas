@@ -44,9 +44,11 @@ public sealed class RedisRoomTransport : IRoomTransport, IDisposable
 
     public event Action<OpSubmit>? OnSubmit;
     public event Action<OpBroadcast>? OnBroadcast;
+    public event Action<PresenceBroadcast>? OnPresence;
 
     private static string InKey(string docId) => $"doc:{docId}:in";
     private static string OutKey(string docId) => $"doc:{docId}:out";
+    private static string PresKey(string docId) => $"doc:{docId}:pres";
     private static string OwnerKey(string docId) => $"doc:{docId}:owner";
 
     private ISubscriber Sub => _mux.GetSubscriber();
@@ -97,6 +99,24 @@ public sealed class RedisRoomTransport : IRoomTransport, IDisposable
             or RedisTimeoutException or RedisConnectionException) { }
     }
 
+    /// <summary>Presence publish fails OPEN to local delivery — a
+    /// cursor that can't cross instances should still show for local
+    /// clients, never be silently eaten.</summary>
+    public async Task PublishPresenceAsync(PresenceBroadcast update)
+    {
+        try
+        {
+            await Sub.PublishAsync(
+                RedisChannel.Literal(PresKey(update.Update.DocId)),
+                JsonSerializer.Serialize(update));
+        }
+        catch (Exception e) when (e is RedisException
+            or RedisTimeoutException or RedisConnectionException)
+        {
+            OnPresence?.Invoke(update);
+        }
+    }
+
     private void EnsureSubscribed(string docId)
     {
         lock (_gate)
@@ -108,6 +128,11 @@ public sealed class RedisRoomTransport : IRoomTransport, IDisposable
                 {
                     var op = JsonSerializer.Deserialize<OpBroadcast>(v.ToString());
                     if (op is not null) OnBroadcast?.Invoke(op);
+                });
+                Sub.Subscribe(RedisChannel.Literal(PresKey(docId)), (_, v) =>
+                {
+                    var p = JsonSerializer.Deserialize<PresenceBroadcast>(v.ToString());
+                    if (p is not null) OnPresence?.Invoke(p);
                 });
             }
             catch (Exception e) when (e is RedisException

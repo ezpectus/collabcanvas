@@ -78,8 +78,11 @@ public sealed class DocumentHub(
         // Tracker stores every update (join snapshot stays fresh) and
         // rate-limits the fanout — a spammy client can't flood the room.
         if (room.Presence.Update(update.ClientId, update, DateTimeOffset.UtcNow))
-            await Clients.OthersInGroup(update.DocId)
-                .SendAsync("presence", new PresenceBroadcast(update.ClientId, update));
+            // Goes through the transport so OTHER instances see it too
+            // (T-12). The client filters its own clientId, so group
+            // fanout instead of OthersInGroup is fine.
+            await transport.PublishPresenceAsync(
+                new PresenceBroadcast(update.ClientId, update));
     }
 
     /// <summary>Socket died — kill the cursor now instead of letting it

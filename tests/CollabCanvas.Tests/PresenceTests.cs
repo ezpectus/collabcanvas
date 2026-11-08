@@ -79,4 +79,20 @@ public class PresenceTests
         Assert.Equal([("doc", "A")], left);
         Assert.Empty(room.Presence.Current());
     }
+
+    [Fact]
+    public void EvictIdle_RemovesStaleRooms_KeepsLiveOnes()
+    {
+        var mgr = new RoomManager();
+        var stale = mgr.GetOrCreate("stale"); // LastActivity = now
+        var live = mgr.GetOrCreate("live");
+        live.Presence.Update("A", Update("A"), T0); // someone present
+
+        var later = DateTimeOffset.UtcNow.AddMinutes(11);
+        var evicted = mgr.EvictIdle(TimeSpan.FromMinutes(10), later);
+
+        Assert.Equal(["stale"], evicted);
+        Assert.NotSame(stale, mgr.GetOrCreate("stale")); // recreated fresh
+        Assert.Same(live, mgr.GetOrCreate("live"));
+    }
 }

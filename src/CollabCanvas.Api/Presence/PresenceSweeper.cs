@@ -40,6 +40,12 @@ public sealed class PresenceSweeper(
                         .SendAsync("presence-left",
                             new PresenceLeft(room.DocId, clientId), stop);
             }
+
+            // Room eviction rides the same tick: rooms idle >10min
+            // with nobody present reload from journal on next contact.
+            var evicted = rooms.EvictIdle(TimeSpan.FromMinutes(10), now);
+            if (evicted.Length > 0)
+                log.LogInformation("evicted idle rooms: {Rooms}", evicted);
         }
     }
 }

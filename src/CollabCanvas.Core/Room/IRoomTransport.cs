@@ -32,8 +32,14 @@ public interface IRoomTransport
     /// <summary>Owner → everyone: a sequenced op for fanout.</summary>
     Task BroadcastAsync(OpBroadcast op);
 
+    /// <summary>Any instance → everyone: an ephemeral presence frame.
+    /// Same pub/sub path as ops but a separate channel and no journal —
+    /// presence must not outlive its sender.</summary>
+    Task PublishPresenceAsync(PresenceBroadcast update);
+
     event Action<OpSubmit>? OnSubmit;
     event Action<OpBroadcast>? OnBroadcast;
+    event Action<PresenceBroadcast>? OnPresence;
 }
 
 /// <summary>Single-process transport: owns everything, events fire
@@ -56,6 +62,13 @@ public sealed class LocalRoomTransport : IRoomTransport
         return Task.CompletedTask;
     }
 
+    public Task PublishPresenceAsync(PresenceBroadcast update)
+    {
+        OnPresence?.Invoke(update);
+        return Task.CompletedTask;
+    }
+
     public event Action<OpSubmit>? OnSubmit;
     public event Action<OpBroadcast>? OnBroadcast;
+    public event Action<PresenceBroadcast>? OnPresence;
 }

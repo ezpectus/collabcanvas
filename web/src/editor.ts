@@ -14,7 +14,7 @@ import { FractionalIndex } from './fractionalIndex'
 import { SceneIndex } from './quadtree'
 import type { Session } from './session'
 
-export type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'text'
+export type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'text' | 'path'
 
 interface Drag {
   mode: 'move' | 'resize' | 'create' | 'pan-hint'
@@ -26,6 +26,8 @@ interface Drag {
   orig: Record<string, unknown> | null
   objId: string | null
   moved: boolean
+  /** path only: the create lives locally until mouseup submits it */
+  localCreate?: { id: string; z: string }
 }
 
 export class Editor {
@@ -75,6 +77,20 @@ export class Editor {
             orig: { ...hit.props }, objId: hit.id, moved: false }
         : { mode: 'pan-hint', startX: wx, startY: wy,
             orig: null, objId: null, moved: false }
+    } else if (this.tool === 'path') {
+      // Freehand: LOCAL-ONLY create while drawing — a path is a
+      // burst of points, sending it on the wire mid-drag would spam
+      // the journal with garbage ops. The real Create (full point
+      // list) is submitted once on mouseup; the echo overwrites the
+      // temp registers at a real seq.
+      const id = this.id()
+      const props = { points: [{ x: wx, y: wy }], stroke: '#e8eaf2', lineWidth: 2 }
+      const z = this.topZ()
+      this.session.applyLocal('Create', { id, kind: 'path', z, props })
+      this.selectedId = id
+      this.drag = { mode: 'create', startX: wx, startY: wy,
+                    orig: props, objId: id, moved: false,
+                    localCreate: { id, z } }
     } else {
       // Create tools: drop a provisional object optimistically; the
       // drag shapes it live, mouseup submits the final Create.
@@ -113,6 +129,20 @@ export class Editor {
         h: Math.max(2, num(d.orig, 'h', 1) + dy),
       })
     } else if (d.mode === 'create') {
+      if (d.localCreate) {
+        // Freehand: extend the point list locally (wire is silent
+        // until mouseup). Points thinner than ~1.5 world-units are
+        // dropped — the list is the op payload, it has a size cost.
+        const pts = d.orig['points'] as { x: number; y: number }[]
+        const last = pts[pts.length - 1]!
+        if ((wx - last.x) ** 2 + (wy - last.y) ** 2 > 2.25) {
+          pts.push({ x: wx, y: wy })
+          this.session.applyLocal('Patch',
+            { id: d.objId, props: { points: pts } })
+          this.redraw()
+        }
+        return
+      }
       const props = this.find(d.objId)?.props
       if (props?.['x1'] !== undefined) {
         this.patchThrottled(d.objId, { x2: wx, y2: wy })
@@ -132,8 +162,17 @@ export class Editor {
     // A create-drag that never moved → degenerate object; delete it
     // rather than leaving a 1px artifact on everyone's screen.
     if (d.mode === 'create' && !d.moved && d.objId) {
-      this.session.submit('Delete', { id: d.objId })
+      if (d.localCreate)
+        this.session.applyLocal('Delete', { id: d.objId }) // never hit the wire
+      else
+        this.session.submit('Delete', { id: d.objId })
       this.selectedId = null
+    } else if (d.localCreate) {
+      // The freehand path lands on the wire ONCE, fully formed.
+      this.session.submit('Create', {
+        id: d.localCreate.id, kind: 'path', z: d.localCreate.z,
+        props: d.orig!,
+      })
     } else if (d.objId) {
       // The 80ms throttle may have dropped the LAST drag position —
       // flush the object's current props so the wire ends where the

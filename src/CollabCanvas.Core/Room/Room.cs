@@ -59,6 +59,10 @@ public sealed class Room
     public string DocId { get; }
     public long LastSeq => _doc.LastSeq;
 
+    /// <summary>Last submit/join — the eviction sweep keys on this,
+    /// not on op count: an idle room with live readers stays.</summary>
+    public DateTimeOffset LastActivity { get; private set; } = DateTimeOffset.UtcNow;
+
     /// <summary>Ephemeral cursors/selections — deliberately NOT
     /// journaled: presence dies with the room (T-7).</summary>
     public Presence.PresenceTracker Presence { get; } = new();
@@ -98,6 +102,7 @@ public sealed class Room
                 _store.WriteSnapshot(seq, _doc.Snapshot());
                 _opsSinceSnap = 0;
             }
+            LastActivity = DateTimeOffset.UtcNow;
             return new SubmitResult(broadcast, IsNew: true);
         }
     }
@@ -111,6 +116,7 @@ public sealed class Room
     {
         lock (_gate)
         {
+            LastActivity = DateTimeOffset.UtcNow;
             // store.FirstSeq is read live — the journal may have been
             // trimmed since this room booted.
             if (lastSeq >= _store.FirstSeq && lastSeq <= _doc.LastSeq)
@@ -172,5 +178,21 @@ public sealed class RoomManager(IOpJournalFactory? journalFactory = null)
         if (!_connections.TryRemove(connectionId, out var c)) return [];
         GetOrCreate(c.DocId).Presence.Remove(c.ClientId);
         return [c];
+    }
+
+    /// <summary>Evict rooms idle past <paramref name="idleFor"/> with
+    /// no live presence — eviction is SAFE: the room reloads from
+    /// snapshot+journal on next contact (T-5 recovery is the exit
+    /// strategy by design). Returns evicted docIds.</summary>
+    public string[] EvictIdle(TimeSpan idleFor, DateTimeOffset now)
+    {
+        var evicted = new List<string>();
+        foreach (var (docId, room) in _rooms)
+        {
+            if (now - room.LastActivity < idleFor) continue;
+            if (room.Presence.Current().Count > 0) continue; // someone still around
+            if (_rooms.TryRemove(docId, out _)) evicted.Add(docId);
+        }
+        return [.. evicted];
     }
 }

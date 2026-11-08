@@ -29,6 +29,8 @@ public sealed class OpRouter(
         };
         transport.OnBroadcast += op =>
             _ = hub.Clients.Group(op.DocId).SendAsync("op", op);
+        transport.OnPresence += p =>
+            _ = hub.Clients.Group(p.Update.DocId).SendAsync("presence", p);
         return Task.CompletedTask;
     }
 

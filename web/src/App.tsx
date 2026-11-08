@@ -7,7 +7,7 @@ import { Editor, type Tool } from './editor'
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
 const COLORS = ['#e57373', '#81c784', '#64b5f6', '#ffb74d', '#ba68c8', '#4db6ac']
-const TOOLS: Tool[] = ['select', 'rect', 'ellipse', 'line', 'text']
+const TOOLS: Tool[] = ['select', 'rect', 'ellipse', 'line', 'text', 'path']
 
 // T-9: editing tools + optimistic apply. Pan lives on middle/right
 // drag or Space+drag — left drag belongs to the active tool.
@@ -78,7 +78,7 @@ export default function App() {
     const down = (e: KeyboardEvent) => {
       if (e.key === ' ') { spaceDown.current = true; return }
       const map: Record<string, Tool> = {
-        v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text',
+        v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text', p: 'path',
       }
       if (map[e.key]) { editor().tool = map[e.key]!; setTool(map[e.key]!) }
       editor().key(e.key)
