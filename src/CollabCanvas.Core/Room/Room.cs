@@ -59,6 +59,10 @@ public sealed class Room
     public string DocId { get; }
     public long LastSeq => _doc.LastSeq;
 
+    /// <summary>Ephemeral cursors/selections — deliberately NOT
+    /// journaled: presence dies with the room (T-7).</summary>
+    public Presence.PresenceTracker Presence { get; } = new();
+
     /// <summary>Submit result: the op's server seq plus whether it was
     /// freshly applied (false = dedup hit — client retried).</summary>
     public sealed record SubmitResult(OpBroadcast Broadcast, bool IsNew);
@@ -147,8 +151,26 @@ public sealed class Room
 public sealed class RoomManager(IOpJournalFactory? journalFactory = null)
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Room> _rooms = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string DocId, string ClientId)> _connections = new();
     private readonly IOpJournalFactory _journals = journalFactory ?? new InMemoryOpJournalFactory();
 
     public Room GetOrCreate(string docId) =>
         _rooms.GetOrAdd(docId, id => new Room(id, _journals.ForDoc(id)));
+
+    /// <summary>Live rooms — the presence sweeper iterates these.</summary>
+    public IEnumerable<Room> Rooms => _rooms.Values;
+
+    /// <summary>connection → (doc, client) so a dropped socket can
+    /// kill its cursor without waiting for TTL.</summary>
+    public void TrackConnection(string connectionId, string docId, string clientId) =>
+        _connections[connectionId] = (docId, clientId);
+
+    /// <summary>Socket died: drop presence for every doc it joined.
+    /// Returns the (docId, clientId) pairs to announce as left.</summary>
+    public (string DocId, string ClientId)[] UntrackConnection(string connectionId)
+    {
+        if (!_connections.TryRemove(connectionId, out var c)) return [];
+        GetOrCreate(c.DocId).Presence.Remove(c.ClientId);
+        return [c];
+    }
 }

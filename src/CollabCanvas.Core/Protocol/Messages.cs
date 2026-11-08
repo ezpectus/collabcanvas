@@ -54,3 +54,6 @@ public sealed record PresenceUpdate(
 
 /// <summary>server → room: someone's presence changed.</summary>
 public sealed record PresenceBroadcast(string ClientId, PresenceUpdate Update);
+
+/// <summary>server → room: a cursor is gone (disconnect or TTL).</summary>
+public sealed record PresenceLeft(string DocId, string ClientId);

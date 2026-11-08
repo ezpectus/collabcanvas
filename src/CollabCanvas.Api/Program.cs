@@ -7,6 +7,7 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<CollabCanvas.Core.Journal.IOpJournalFactory,
     CollabCanvas.Api.Journal.RedisOpJournalFactory>();
 builder.Services.AddSingleton<CollabCanvas.Core.Room.RoomManager>();
+builder.Services.AddHostedService<CollabCanvas.Api.Presence.PresenceSweeper>();
 // Redis is the journal (T-5) — the app must boot without it.
 // AbortOnConnectFail=false: the mux returns immediately and retries
 // in the background; /health reports "degraded" until it lands.
