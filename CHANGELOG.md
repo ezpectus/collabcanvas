@@ -8,6 +8,23 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-5 журнал + снапшоты + recovery [D]
+
+- `Core/Journal/IOpJournal.cs` — sync-контракт + `InMemoryOpJournal`
+  (с maxLen для тестов урезания) + фабрики
+- `Api/Journal/RedisOpJournal.cs` — Stream `doc:{id}:ops`
+  (MAXLEN ~10k) + `doc:{id}:snap`, fail-open деградация
+- `Room.cs` — recovery в конструкторе (snapshot → replay → rebuild
+  dedup), snapshot каждые 100 ops, join-ветки tail/snapshot,
+  `_journal` List → словарь seq→op
+- `Document.Restore` — rehydrate регистров на snapSeq;
+  `Snapshot()` Props → `SortedDictionary` (был массив {Key,Value} —
+  Restore падал)
+- `PersistenceTests` (6 шт): replay, snapshot+tail, dedup после
+  рестарта, join ниже базы/в будущем, урезанный журнал + снапшот
+- `docs/diagrams/mmd/recovery.mmd`, `architecture.md` §16,
+  tasks T-5 → `review`, PLAN +6
+
 ## 2026-11-08 — T-4 комната + seq [D]
 
 - `Core/Room/Room.cs` + `RoomManager` — dedup/seq/apply/journal

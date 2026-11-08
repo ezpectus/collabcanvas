@@ -1,0 +1,39 @@
+%% T-5: persistence & recovery — journal write path and room rebuild.
+%% Update when: snapshot trigger, join branches, or journal layout change.
+sequenceDiagram
+    participant C as Client
+    participant R as Room (lock)
+    participant D as Document
+    participant J as IOpJournal
+    participant RS as Redis Stream / snap key
+
+    Note over R,J: write path — every op, under the room lock
+    C->>R: Submit(op)
+    R->>R: dedup (clientId,clientSeq)
+    R->>D: apply, seq=N
+    R->>J: Append(op N)
+    J->>RS: XADD doc:{id}:ops (MAXLEN ~10k)
+    alt every 100 ops
+        R->>J: WriteSnapshot(seq=N, doc.Snapshot())
+        J->>RS: SET doc:{id}:snap {seq,json}
+    end
+    R-->>C: broadcast + ack
+
+    Note over R,RS: restart — room rebuild
+    R->>J: LoadSnapshot()
+    J->>RS: GET doc:{id}:snap
+    R->>D: Restore(json, snapSeq) — registers at seq=snapSeq
+    R->>J: ReadSince(FirstSeq-1) — ALL surviving ops
+    J->>RS: XRANGE doc:{id}:ops
+    loop each op
+        R->>D: Apply — LWW no-op if seq<=snapSeq
+        R->>R: rebuild _ackIndex/_lastClientSeq — dedup survives restart
+    end
+
+    Note over C,R: join branches
+    C->>R: Join(lastSeq)
+    alt FirstSeq <= lastSeq <= room LastSeq
+        R-->>C: ops since lastSeq
+    else lastSeq below journal base OR in the future
+        R-->>C: snapshot + ops since snapSeq
+    end

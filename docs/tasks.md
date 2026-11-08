@@ -123,19 +123,39 @@ op?
 
 ---
 
-## T-5 · Журнал + снапшоты + реконнект · `todo` · M
+## T-5 · Журнал + снапшоты + реконнект · `review` · M
 
-**Devin пишет:** op journal (Redis Streams ИЛИ append-таблица —
-решение в T-1), периодический snapshot, catch-up протокол
-(`join(lastSeq)` → ops since), восстановление комнаты после
-рестарта (snapshot + replay хвоста журнала).
+*Реализовано: `Core/Journal/IOpJournal.cs` (+ InMemory),
+`Api/Journal/RedisOpJournal.cs`, `Document.Restore`, recovery +
+join-ветки в `Room.cs`. 6 тестов (20/20 набор). §16 +
+`mmd/recovery.mmd`.*
 
-**Ревью-чеклист:** гонка «snapshot пишется пока ops прилетают» ·
-клиент с lastSeq=0 vs lastSeq в будущем · граница данных журнала
-(retention).
+**Что написано:** sync-интерфейс `IOpJournal` (append/readSince/
+snapshot/FirstSeq — живой базовый seq журнала). Room при старте:
+snapshot → `Restore` (регистры на snapSeq) → replay всего выжившего
+журнала → dedup-индексы пересобираются из journaled ops **бесплатно**
+(ретрай после рестарта → исходный seq). Snapshot каждые 100 ops под
+тем же локом. Join: `FirstSeq <= lastSeq <= LastSeq` → хвост; иначе
+(урезано/будущее) → snapshot + ops с snapSeq. Redis: stream
+`doc:{id}:ops` MAXLEN ~10k + `doc:{id}:snap`. Redis-журнал fail-open:
+сбой → комната деградирует до in-memory (наблюдаемо в /health).
+
+**Поймано при реализации:** (1) `Props.OrderBy` сериализовался
+массивом `{Key,Value}` — Restore падал, фикс `SortedDictionary`;
+(2) кешированная `_journalBase` протухала при урезании — FirstSeq
+теперь читается live.
+
+**Ревью-чеклист:** проследи порядок apply→append→broadcast в
+`Submit` — почему append внутри лока убивает гонку «snapshot vs
+ops» · в `Restore` найди, почему `propSeq=snapSeq` делает replay
+ops≤snapSeq бесплатным · где граница dedup: журнал урезан + рестарт
+→ что вернёт ретрай? · fail-open RedisOpJournal — найди место, где
+op молча теряет durability (это осознанно, §16.1).
 
 **Gate:** сервер убит посреди op — что теряется и где читается
-доказательство? Чекпоинт + replay — где может подвиснуть dup?
+доказательство? Клиент с lastSeq=5, журнал урезан до 106 — что он
+получит и почему? Dedup переживает рестарт — откуда берётся
+`_ackIndex`?
 
 ---
 

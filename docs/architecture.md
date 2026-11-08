@@ -348,9 +348,63 @@ submit → broadcast группе + ack автору. Тесты бьют Room �
 | journal | in-memory `List`, seq-ordered | персистентность = T-5; рестарт сейчас теряет всё — осознанно |
 | snapshot в join | пока `null` — журнал полный и мал | снапшоты нужны, когда журнал урезан (T-5) |
 
-**Честные края:** `_journal[seq-1]` полагается на сплошной 1-based
-seq — верно пока журнал не урезан (T-5 переделает на словарь/
-offset); комнатам нет eviction — пустые комнаты копятся (T-5/T-10);
-`_lastClientSeq` принимает клиентские дырки молча (out-of-order
-submit внутри клиента — его проблема, серверу безразличен порядок
-clientSeq).
+**Честные края:** комнатам нет eviction — пустые комнаты копятся
+(T-10); `_lastClientSeq` принимает клиентские дырки молча
+(out-of-order submit внутри клиента — его проблема, серверу
+безразличен порядок clientSeq). `_journal[seq-1]` из T-4 заменён на
+словарь seq→op — журнал теперь урезаемый (§16).
+
+---
+
+## 16. Журнал, снапшоты, восстановление (T-5, реализовано)
+
+Файлы: `Core/Journal/IOpJournal.cs` (+ `InMemoryOpJournal`),
+`Api/Journal/RedisOpJournal.cs`, `Room.cs` (recovery + join-ветки),
+`Document.Restore`. Диаграмма: `docs/diagrams/mmd/recovery.mmd`.
+
+**Контракт `IOpJournal`** (sync — точка упорядочивания и так лок,
+append идёт внутри него после apply и до broadcast):
+`Append` / `ReadSince(seq)` / `LoadSnapshot` / `WriteSnapshot` /
+`FirstSeq` (база журнала — урезание MAXLEN двигает её вперёд,
+читается live на каждом join).
+
+**Recovery (конструктор Room):** snapshot → `Document.Restore`
+(регистры получают `propSeq=snapSeq` — ops ≤ snapSeq проигрывают LWW
+бесплатно) → replay ВСЕГО выжившего журнала (ops ≤ snapSeq — no-op,
+но нужны в `_ops` для join-хвостов) → rebuild `_ackIndex` и
+`_lastClientSeq` прямо из journaled ops — **dedup переживает
+рестарт бесплатно**: ретрай клиента после рестарта возвращает
+исходный seq (тест `Restart_ClientRetry_StillDeduped`).
+
+**Join-ветки:** `FirstSeq <= lastSeq <= room.LastSeq` → хвост ops;
+иначе (ниже базы журнала ИЛИ в будущем) → `Document.Snapshot()` +
+ops с snapSeq. «Клиент в будущем» = сервер потерял данные → честный
+ответ — полное состояние, а не молчаливый пробел.
+
+**Redis-мapping:** stream `doc:{id}:ops` (XADD, MAXLEN ~10k
+approximate), snap `doc:{id}:snap` = `{seq,json}`. Stream-id ≠ op-seq —
+`ReadSince` фильтрует по полю `Seq` после десериализации.
+
+**Snapshot-триггер:** каждые `Room.SnapshotEveryOps = 100` ops,
+внутри того же лока — гонки «snapshot vs ops» нет, снапшот всегда
+консистентный срез.
+
+**Честные края:**
+
+1. `RedisOpJournal` — **fail-open**: любая Redis-ошибка → no-op,
+   комната деградирует до in-memory persistence (ops живут, рестарт
+   теряет). Альтернатива «фейлить Submit» превратила бы Redis-блип в
+   полную остановку редактирования. Наблюдаемо через `/health
+   → degraded`. Это осознанный разрыв at-least-once — как и AOF
+   everysec, но шире (любой сбой записи, не только kill -9).
+2. Dedup-индекс живёт ровно столько, сколько журнал: урезание +
+   рестарт → древний ретрай применится как НОВЫЙ op (тот же payload,
+   новый seq — LWW смягчает, но семантика «ровно один раз» кончается
+   у границы журнала).
+3. `_ops` дублирует журнал в памяти комнаты (нужен для дедуп-lookup и
+   join-хвостов) — до 10k ops на комнату, приемлемо для MVP.
+4. Нет timer-триггера снапшота: тихий документ не снапшотится, цена —
+   replay хвоста до MAXLEN при рестарте.
+5. Снапшот не несёт tombstone'ы: объекты, удалённые до snapSeq,
+   испаряются полностью — их patch'и тоже урезаны вместе с журналом,
+   так что некому воскрешать.
