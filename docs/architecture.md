@@ -543,3 +543,47 @@ seqs — при 1000+ локальных мутаций без submit'а ε-ря
 приблизиться к следующему целому seq и переписать чужой свежий op
 на один кадр (эхо всё равно вернёт истину); resize-handle только
 BR-угол, rotate нет — MVP.
+
+---
+
+## 21. Scale-out (T-10, реализовано)
+
+Файлы: `Core/Room/IRoomTransport.cs`, `Api/Journal/
+RedisRoomTransport.cs`, `Api/Presence/OpRouter.cs`, хаб переписан.
+Диаграмма: `docs/diagrams/mmd/scaleout.mmd`. Тесты: `ChaosTests`.
+
+**Модель — owner-per-doc** (как Figma: один процесс = точка
+порядка, только теперь процесс выбирается claim'ом, а не
+привязкой): `doc:{id}:owner` = `SET NX` TTL 15с, renewal 5с.
+Не-владелец: submit → `PUBLISH doc:{id}:in` → inbox владельца →
+`Room.Submit` → `PUBLISH doc:{id}:out` → КАЖДЫЙ инстанс (включая
+владельца — uniform path) релеирует в SignalR-группу через
+`OpRouter`. Ack не-владельца: `seq=-1 "forwarded"` — реальный seq
+прилетает эхом.
+
+**Join на не-владельце** — прямо из журнала (ops/snapshot в Redis,
+локальной комнаты не нужно).
+
+**Честные края (важные):**
+
+1. **Claim advisory, без fencing.** Владелец завис > TTL → другой
+   claim'ит → окно split-brain: ДВА инстанса назначают seq одному
+   документу → расходящиеся seq, журнал — свидетель merge'а, не
+   спасение. Настоящее лекарство — sticky routing / fencing token /
+   Raft; MVP принимает и документирует.
+2. **Fail-open**: Redis-сбой в `Owns` → локальное владение. Два
+   инстанса в таком состоянии = тихий split-brain; единственный
+   сигнал — `/health` degraded.
+3. **pub/sub at-most-once**: op, опубликованный пока пир мёртв,
+   потерян для него навсегда — re-sync через журнал при rejoin;
+   «дыра» в live-клиенте ловится только reconnect'ом.
+4. Ретрай через dedup на владельце: non-owner ack'ает forwarded до
+   того, как известен seq — pending клиента висит до эха; если op
+   был dedup-дубликатом, `OpRouter` всё равно бродкастит оригинал
+   (клиенты отсекают `seq <= last`, pending разблокируется).
+5. Storm: клиентский backoff — exp × full jitter (`random ×
+   min(30с, 2^n)`); серверный join-шторм всё равно бьёт по журналу
+   (N × XRANGE) — кеш последнего снапшота/хвоста отложен.
+6. Presence остался per-instance — курсор виден только клиентам
+   того же инстанса (второй канал pub/sub для presence не завёден:
+   эфемерность не стоит ещё одного fanout-пути в MVP).

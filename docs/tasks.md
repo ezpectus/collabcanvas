@@ -271,17 +271,33 @@ topmost — почему sort desc z, а не первый попавшийся.
 
 ---
 
-## T-10 · Scale-out + хаос · `todo` · M
+## T-10 · Scale-out + хаос · `review` · M
 
-**Devin пишет:** Redis pub/sub для op-фанаута между инстансами
-(комната не привязана к процессу), reconnect storm handling,
-chaos-скрипты: dup ops, shuffled delivery, kill-mid-snapshot.
+*Реализовано: `IRoomTransport` (Core), `RedisRoomTransport` +
+`OpRouter` (Api), хаб на owner/non-owner ветки, join из журнала на
+не-владельце, клиентский reconnect backoff с full jitter.
+`ChaosTests` (34/34). §21 + `mmd/scaleout.mmd`.*
 
-**Ревью-чеклист:** один клиент на инстанс A, другой на B —
-полный путь op'а · pub/sub at-least-once → где дедуп по seq.
+**Что написано:** owner-per-doc через `SET NX` claim (TTL 15с,
+renewal 5с). Каналы `doc:{id}:in` (submit→owner) / `doc:{id}:out`
+(seq'd op→все). `OpRouter`: inbox → Room.Submit → outbox; outbox →
+SignalR-группа — uniform fanout. Non-owner ack `seq=-1 forwarded`,
+join — из журнала. Клиент: `random × min(30с, 2^n)` backoff.
+
+**Поймано/принято:** claim advisory без fencing — окно split-brain
+задокументировано (§21.1); Redis-сбой → локальное владение (тихий
+split-brain, /health degraded — единственный сигнал); pub/sub
+at-most-once; presence остался per-instance.
+
+**Ревью-чеклист:** проследи путь op'а A→инстанс1→владелец→B на
+диаграмме · найди два места, где op может потеряться при pub/sub
+at-most-once, и что их лечит · dedup на владельце: почему router
+бродкастит дубликаты заново · где граница «это MVP, а это уже
+нужен fencing».
 
 **Gate:** та же комната на двух инстансах — где теперь точка
-упорядочивания?
+упорядочивания и что бывает, когда claim теряется посреди сессии?
+Клиент на non-owner инстансе получил ack — как он узнает seq?
 
 ---
 

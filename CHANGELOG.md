@@ -8,6 +8,23 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-10 scale-out + хаос [D]
+
+- `Core/Room/IRoomTransport.cs` — контракт owner/inbox/outbox +
+  `LocalRoomTransport` (single-instance/тесты)
+- `Api/Journal/RedisRoomTransport.cs` — claim `doc:{id}:owner`
+  (SET NX, TTL 15с, renewal 5с), pub/sub `doc:{id}:in`/`:out`,
+  fail-open на локальное владение
+- `Api/Presence/OpRouter.cs` — inbox→Submit→outbox, outbox→группы
+  (singleton; hub transient)
+- `DocumentHub` — owner/non-owner ветки submit (ack `forwarded`),
+  join из журнала на не-владельце
+- `session.ts` — reconnect backoff exp × full jitter
+- `ChaosTests` (3 шт): shuffle+dup → конвергенция, kill-mid-stream
+  → честный durable-prefix, reconnect-storm → идентичные хвосты
+- `docs/diagrams/mmd/scaleout.mmd`, `architecture.md` §21,
+  tasks T-10 → `review`, PLAN +4
+
 ## 2026-11-08 — T-9 фронт: редактирование + QuadTree [D]
 
 - `web/src/geometry.ts` — общий BBox/boundsOf (вынос из renderer)

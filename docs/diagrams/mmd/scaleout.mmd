@@ -1,0 +1,23 @@
+%% T-10: scale-out — owner-per-doc over Redis pub/sub.
+%% Update when: ownership claims, channels, or OpRouter flow changes.
+sequenceDiagram
+    participant CA as Client A (→ inst. 1)
+    participant I1 as Instance 1 (non-owner)
+    participant R as Redis pub/sub
+    participant I2 as Instance 2 (OWNER)
+    participant CB as Client B (→ inst. 2)
+
+    Note over I2: claimed doc:{id}:owner SET NX (TTL 15s, renewed 5s)
+
+    CA->>I1: SubmitOp
+    I1->>R: PUBLISH doc:{id}:in (op)
+    I1-->>CA: ack seq=-1 "forwarded"
+    R->>I2: inbox → OpRouter
+    I2->>I2: Room.Submit → seq=N, journal
+    I2->>R: PUBLISH doc:{id}:out (broadcast)
+    R->>I1: :out → hub.Clients.Group
+    R->>I2: :out → hub.Clients.Group
+    I1-->>CA: op seq=N (echo reconciles optimistic)
+    I2-->>CB: op seq=N
+
+    Note over CA,I2: ordering point = owner's Room lock.<br/>Split-brain possible: advisory claim,<br/>no fencing — journal is merge witness.
