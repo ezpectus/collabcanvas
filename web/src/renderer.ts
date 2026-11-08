@@ -4,8 +4,10 @@
 // React owns nothing here: this class owns the canvas and the loop;
 // React only mounts it and reads stats.
 
-import type { CanvasObject } from './model'
+import type { CanvasObject, DocModel } from './model'
 import type { PresenceUpdate } from './protocol'
+import { num, str, type BBox } from './geometry'
+import type { SceneIndex } from './quadtree'
 
 export interface Viewport { x: number; y: number; scale: number }
 
@@ -14,40 +16,6 @@ export interface FrameStats {
   drawn: number   // after culling
   drawMs: number  // EMA of draw call duration
   fps: number     // EMA while frames actually render
-}
-
-const num = (p: Record<string, unknown>, k: string, d = 0): number =>
-  typeof p[k] === 'number' ? (p[k] as number) : d
-const str = (p: Record<string, unknown>, k: string, d = ''): string =>
-  typeof p[k] === 'string' ? (p[k] as string) : d
-
-interface BBox { x0: number; y0: number; x1: number; y1: number }
-
-function boundsOf(o: CanvasObject): BBox | null {
-  const p = o.props
-  switch (o.kind) {
-    case 'rect': case 'ellipse': case 'text': case 'image': {
-      const x = num(p, 'x'), y = num(p, 'y')
-      return { x0: x, y0: y, x1: x + num(p, 'w', 10), y1: y + num(p, 'h', 10) }
-    }
-    case 'line': {
-      const x0 = num(p, 'x1'), y0 = num(p, 'y1')
-      const x1 = num(p, 'x2'), y1 = num(p, 'y2')
-      return { x0: Math.min(x0, x1), y0: Math.min(y0, y1),
-               x1: Math.max(x0, x1), y1: Math.max(y0, y1) }
-    }
-    case 'path': {
-      const pts = p['points'] as { x: number; y: number }[] | undefined
-      if (!pts?.length) return null
-      let b: BBox = { x0: pts[0]!.x, y0: pts[0]!.y, x1: pts[0]!.x, y1: pts[0]!.y }
-      for (const pt of pts) {
-        b = { x0: Math.min(b.x0, pt.x), y0: Math.min(b.y0, pt.y),
-              x1: Math.max(b.x1, pt.x), y1: Math.max(b.y1, pt.y) }
-      }
-      return b
-    }
-    default: return null
-  }
 }
 
 export class Renderer {
@@ -61,8 +29,10 @@ export class Renderer {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly getObjects: () => CanvasObject[],
+    private readonly model: DocModel,
+    private readonly index: SceneIndex,
     private readonly getCursors: () => Iterable<PresenceUpdate>,
+    private readonly getSelection: () => BBox | null,
   ) {}
 
   markDirty(): void { this.dirty = true }
@@ -146,15 +116,13 @@ export class Renderer {
       x1: (w - v.x) / v.scale + 8, y1: (h - v.y) / v.scale + 8,
     }
 
-    const objects = this.getObjects()
-    let drawn = 0
-    for (const o of objects) {
-      const b = boundsOf(o)
-      if (!b || b.x1 < view.x0 || b.x0 > view.x1 || b.y1 < view.y0 || b.y0 > view.y1)
-        continue // culled — the whole point of bounding boxes
-      drawn++
-      drawObject(ctx, o)
-    }
+    // Quadtree culling: pay per drawn object, not per object in doc.
+    const objects = this.index.visibleIn(this.model, view)
+    for (const o of objects) drawObject(ctx, o)
+    const drawn = objects.length
+
+    const sel = this.getSelection()
+    if (sel) this.drawSelection(ctx, sel)
 
     // Remote cursors on top — world-space dots + client label.
     for (const u of this.getCursors()) {
@@ -168,8 +136,22 @@ export class Renderer {
       ctx.fillText(u.clientId, c.x + 8 / v.scale, c.y - 4 / v.scale)
     }
 
-    this.stats.objects = objects.length
+    this.stats.objects = this.model.objectCount()
     this.stats.drawn = drawn
+  }
+
+  /** Dashed selection outline + bottom-right resize handle. */
+  private drawSelection(ctx: CanvasRenderingContext2D, b: BBox): void {
+    const v = this.view
+    const lw = 1.5 / v.scale
+    ctx.strokeStyle = '#5f8dff'
+    ctx.lineWidth = lw
+    ctx.setLineDash([6 / v.scale, 4 / v.scale])
+    ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+    ctx.setLineDash([])
+    const h = 8 / v.scale
+    ctx.fillStyle = '#5f8dff'
+    ctx.fillRect(b.x1 - h / 2, b.y1 - h / 2, h, h)
   }
 }
 

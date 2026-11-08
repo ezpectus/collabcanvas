@@ -18,6 +18,9 @@ pre { background: #1e1e2a; padding: 10px; border-radius: 6px; font-size: 12px; o
 pre.err { color: #e57c7c; }
 .hint { color: #777f96; font-size: 12px; margin: 0; }
 
+button.tool { background: #2a2a38; padding: 6px 12px; font-size: 13px; }
+button.tool.active { background: #3d5af1; }
+
 .stats { font-size: 12px; color: #9aa3c0; font-variant-numeric: tabular-nums; }
 
 .board-wrap { flex: 1; min-height: 0; border: 1px dashed #3a3f55; border-radius: 8px;

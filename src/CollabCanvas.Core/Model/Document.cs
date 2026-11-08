@@ -7,10 +7,10 @@ namespace CollabCanvas.Core.Model;
 /// Document state — the apply-semantics heart (T-3).
 ///
 /// Model: every object property (incl. reserved "_kind"/"_z") is an
-/// LWW register keyed (objId, prop) holding (value, seq). Ops never
-/// carry timestamps — the server's seq IS the order. Result:
-/// apply is order-agnostic and idempotent by construction, so every
-/// replica replaying the same op set converges to the same state.
+/// LWW register nested objId → prop → (value, seq). Ops never carry
+/// timestamps — the server's seq IS the order. Result: apply is
+/// order-agnostic and idempotent by construction, so every replica
+/// replaying the same op set converges to the same state.
 ///
 /// Existence is LWW too: createSeq vs deleteSeq per object —
 /// a patch can never resurrect a deleted object, only a new create
@@ -21,8 +21,9 @@ public sealed class Document
     public const string KindKey = "_kind";
     public const string ZKey = "_z";
 
-    private readonly Dictionary<(string ObjId, string Prop), JsonElement> _props = new();
-    private readonly Dictionary<(string ObjId, string Prop), long> _propSeq = new();
+    // Nested per-object registers — Objects() is O(total regs); a flat
+    // scan-per-object was O(objects × regs) and died at 10k objects.
+    private readonly Dictionary<string, Dictionary<string, (JsonElement V, long Seq)>> _props = new();
     private readonly Dictionary<string, long> _createSeq = new();
     private readonly Dictionary<string, long> _deleteSeq = new();
 
@@ -62,33 +63,10 @@ public sealed class Document
 
     private void WriteProp(string id, string prop, JsonElement value, long seq)
     {
-        var key = (id, prop);
-        if (seq <= _propSeq.GetValueOrDefault(key)) return; // LWW: older/same loses — makes re-apply a no-op
-        _props[key] = value.Clone();
-        _propSeq[key] = seq;
-    }
-
-    /// <summary>Visible objects: created after last delete.
-    /// Sorted by (zKey, id) — deterministic render/hit order on every
-    /// replica regardless of apply order.</summary>
-    public IEnumerable<CanvasObject> Objects()
-    {
-        foreach (var (id, cseq) in _createSeq)
-        {
-            if (cseq <= _deleteSeq.GetValueOrDefault(id)) continue;
-            var props = new Dictionary<string, JsonElement>();
-            string? kind = null;
-            var z = "";
-            foreach (var ((oid, prop), val) in _props)
-            {
-                if (oid != id) continue;
-                if (prop == KindKey) kind = val.GetString();
-                else if (prop == ZKey) z = val.GetString() ?? "";
-                else props[prop] = val;
-            }
-            if (kind is null) continue; // props exist but never a winning create
-            yield return new CanvasObject(id, kind, z, props);
-        }
+        if (!_props.TryGetValue(id, out var obj))
+            _props[id] = obj = new();
+        if (seq <= obj.GetValueOrDefault(prop).Seq) return; // LWW: older/same loses — makes re-apply a no-op
+        obj[prop] = (value.Clone(), seq);
     }
 
     /// <summary>Rehydrate from a <see cref="Snapshot"/> taken at
@@ -109,6 +87,24 @@ public sealed class Document
                 WriteProp(id, p.Name, p.Value, seq);
         }
         if (seq > LastSeq) LastSeq = seq;
+    }
+
+    /// <summary>Visible objects: created after last delete.
+    /// Sorted by (zKey, id) — deterministic render/hit order on every
+    /// replica regardless of apply order.</summary>
+    public IEnumerable<CanvasObject> Objects()
+    {
+        foreach (var (id, cseq) in _createSeq)
+        {
+            if (cseq <= _deleteSeq.GetValueOrDefault(id)) continue;
+            if (!_props.TryGetValue(id, out var regs)) continue;
+            if (!regs.TryGetValue(KindKey, out var kind)) continue; // regs exist but never a winning create
+            var z = regs.TryGetValue(ZKey, out var zr) ? zr.V.GetString() ?? "" : "";
+            var props = new Dictionary<string, JsonElement>();
+            foreach (var (prop, reg) in regs)
+                if (prop != KindKey && prop != ZKey) props[prop] = reg.V;
+            yield return new CanvasObject(id, kind.V.GetString()!, z, props);
+        }
     }
 
     /// <summary>Deterministic snapshot — two replicas holding the same

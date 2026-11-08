@@ -1,44 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Session } from './session'
 import { Renderer, type FrameStats } from './renderer'
-import { FractionalIndex } from './fractionalIndex'
+import { SceneIndex } from './quadtree'
+import { Editor, type Tool } from './editor'
 
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
 const COLORS = ['#e57373', '#81c784', '#64b5f6', '#ffb74d', '#ba68c8', '#4db6ac']
+const TOOLS: Tool[] = ['select', 'rect', 'ellipse', 'line', 'text']
 
-// T-8: real render path — DocModel → Canvas via rAF+dirty loop,
-// viewport pan/zoom, presence cursors. Editing tools land in T-9;
-// "Spawn rect" exists only to prove the live op path end-to-end.
+// T-9: editing tools + optimistic apply. Pan lives on middle/right
+// drag or Space+drag — left drag belongs to the active tool.
 export default function App() {
   const [state, setState] = useState<ConnState>('idle')
   const [stats, setStats] = useState<FrameStats | null>(null)
   const [lastSeq, setLastSeq] = useState(0)
+  const [tool, setTool] = useState<Tool>('select')
   const [error, setError] = useState<string | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sessionRef = useRef<Session | null>(null)
   const rendererRef = useRef<Renderer | null>(null)
+  const indexRef = useRef(new SceneIndex())
+  const editorRef = useRef<Editor | null>(null)
   const clientId = useRef(`web-${Math.random().toString(36).slice(2, 8)}`)
   const color = useRef(COLORS[Math.floor(Math.random() * COLORS.length)]!)
-  const drag = useRef<{ x: number; y: number } | null>(null)
+  const panDrag = useRef<{ x: number; y: number } | null>(null)
+  const spaceDown = useRef(false)
   const statTick = useRef(0)
 
   const session = (): Session => (sessionRef.current ??= new Session())
 
-  // Mount the render loop once — React never touches the canvas again.
   useEffect(() => {
     const r = new Renderer(
       canvasRef.current!,
-      () => session().model.objects(),
+      session().model,
+      indexRef.current,
       () => session().cursors.values(),
+      () => editorRef.current?.selectionBox() ?? null,
     )
     rendererRef.current = r
-    // Stats hit React state at ~10Hz — a 60fps onFrame would be a
-    // re-render storm; the canvas itself never re-renders.
-    r.onFrame = (s) => {
-      if (++statTick.current % 6 === 0) setStats({ ...s })
-    }
+    r.onFrame = (s) => { if (++statTick.current % 6 === 0) setStats({ ...s }) }
     r.start()
     return () => r.stop()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,6 +50,10 @@ export default function App() {
     rendererRef.current?.markDirty()
     setLastSeq(session().model.lastSeq)
   }, [])
+
+  const editor = useCallback((): Editor =>
+    (editorRef.current ??= new Editor(session(), indexRef.current, markDirty)),
+  [markDirty])
 
   const connect = useCallback(async () => {
     setState('connecting')
@@ -67,28 +73,39 @@ export default function App() {
 
   useEffect(() => () => { void sessionRef.current?.stop() }, [])
 
-  // Spawn one real op — proves the full path mouse→server→journal→echo.
-  const spawnRect = useCallback(async () => {
-    const s = sessionRef.current
-    if (!s || state !== 'joined') return
-    const id = `o-${Math.random().toString(36).slice(2, 8)}`
-    const top = s.model.objects().at(-1)?.z
-    await s.submit('Create', {
-      id, kind: 'rect',
-      z: top ? FractionalIndex.after(top) : FractionalIndex.first(),
-      props: {
-        x: Math.random() * 700, y: Math.random() * 400,
-        w: 60 + Math.random() * 80, h: 40 + Math.random() * 60,
-        fill: color.current,
-      },
-    })
-  }, [state])
+  // Tool hotkeys + Delete.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === ' ') { spaceDown.current = true; return }
+      const map: Record<string, Tool> = {
+        v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text',
+      }
+      if (map[e.key]) { editor().tool = map[e.key]!; setTool(map[e.key]!) }
+      editor().key(e.key)
+    }
+    const up = (e: KeyboardEvent) => { if (e.key === ' ') spaceDown.current = false }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [editor])
 
   const stress = useCallback((n: number) => {
     if (n === 0) session().model.clearGhosts()
     else session().model.debugFill(n)
     markDirty()
   }, [markDirty])
+
+  const world = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    return rendererRef.current!.toWorld(
+      e.clientX - rect.left, e.clientY - rect.top)
+  }
+
+  const panning = (e: React.MouseEvent<HTMLCanvasElement>) =>
+    e.button === 1 || e.button === 2 || spaceDown.current
 
   return (
     <div className="shell">
@@ -98,9 +115,13 @@ export default function App() {
         <button onClick={() => void connect()} disabled={state === 'connecting'}>
           Join demo
         </button>
-        <button onClick={() => void spawnRect()} disabled={state !== 'joined'}>
-          Spawn rect
-        </button>
+        {TOOLS.map((t) => (
+          <button key={t}
+            className={t === tool ? 'tool active' : 'tool'}
+            onClick={() => { editor().tool = t; setTool(t) }}>
+            {t}
+          </button>
+        ))}
         <button onClick={() => stress(10_000)}>Stress 10k</button>
         <button onClick={() => stress(0)}>Clear</button>
         {stats && (
@@ -115,20 +136,26 @@ export default function App() {
         <canvas
           ref={canvasRef}
           className="board"
-          onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY } }}
-          onMouseUp={() => { drag.current = null }}
-          onMouseLeave={() => { drag.current = null }}
+          onContextMenu={(e) => e.preventDefault()}
+          onMouseDown={(e) => {
+            if (panning(e)) panDrag.current = { x: e.clientX, y: e.clientY }
+            else if (e.button === 0) {
+              const w = world(e)
+              editor().mouseDown(w.x, w.y, rendererRef.current!.view.scale)
+            }
+          }}
+          onMouseUp={() => { panDrag.current = null; editor().mouseUp() }}
+          onMouseLeave={() => { panDrag.current = null; editor().mouseUp() }}
           onMouseMove={(e) => {
             const r = rendererRef.current
             if (!r) return
-            const rect = e.currentTarget.getBoundingClientRect()
-            const cx = e.clientX - rect.left
-            const cy = e.clientY - rect.top
-            if (drag.current) {
-              r.pan(e.clientX - drag.current.x, e.clientY - drag.current.y)
-              drag.current = { x: e.clientX, y: e.clientY }
+            const w = world(e)
+            if (panDrag.current) {
+              r.pan(e.clientX - panDrag.current.x, e.clientY - panDrag.current.y)
+              panDrag.current = { x: e.clientX, y: e.clientY }
+            } else {
+              editor().mouseMove(w.x, w.y)
             }
-            const w = r.toWorld(cx, cy)
             sessionRef.current?.sendPresence(w.x, w.y, color.current)
           }}
           onWheel={(e) => {
