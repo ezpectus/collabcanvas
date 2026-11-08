@@ -8,6 +8,24 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-9 фронт: редактирование + QuadTree [D]
+
+- `web/src/geometry.ts` — общий BBox/boundsOf (вынос из renderer)
+- `web/src/quadtree.ts` — QuadTree cap8/depth10 + `SceneIndex`
+  (rebuild по model.version, visibleIn z-sorted, hitTest topmost)
+- `web/src/editor.ts` — инструменты select/move/resize/create/
+  delete, драг с throttle 80мс + flush на mouseup
+- `web/src/session.ts` — оптимистичный apply (temp-seq `lastSeq+ε`,
+  cap 0.9995), pending → rebase+resubmit на rejoin, `applyLocal`
+- `web/src/model.ts` — регистры вложенные по objId (O(n²) → O(n)),
+  version-counter, lastSeq только по целым seq
+- `Core/Model/Document.cs` — та же O(n²)-починка: регистры
+  `objId→prop→(v,seq)` вместо flat `((id,prop)→…)`
+- `renderer.ts` — culling через SceneIndex, selection-хайлайт
+- `App.tsx` — тулбар, hotkeys (v/r/e/l/t), Space/middle-drag pan
+- `docs/diagrams/mmd/client-render.mmd` (обновлена),
+  `architecture.md` §20, tasks T-9 → `review`, PLAN +4
+
 ## 2026-11-08 — T-8 фронт: рендер [D]
 
 - `web/src/model.ts` — DocModel: TS-зеркало LWW (regs/life, apply,

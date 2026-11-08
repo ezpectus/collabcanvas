@@ -1,23 +1,28 @@
-%% T-8: client render path — who owns the frame, where work happens.
-%% Update when: render loop ownership, culling, or session flow changes.
+%% T-8/T-9: client render+edit path — who owns the frame, where work happens.
+%% Update when: render loop ownership, culling, optimistic flow, or session changes.
 flowchart LR
     subgraph Session["Session (SignalR wrapper)"]
         H[HubConnection] -->|op / presence / snapshot| M[DocModel<br/>LWW mirror]
         M -->|onChange| D[markDirty]
         CS[Cursors map] -->|onPresence| D
+        Pend[pending ops<br/>clientSeq → op] -.->|rejoin: rebase+resubmit| H
+    end
+
+    subgraph Editor["Editor (T-9 tools)"]
+        MDown[mouseDown] -->|hitTest| QT[SceneIndex<br/>QuadTree]
+        MMove[mouseMove] -->|patch throttled 80ms<br/>or local-only apply| Sub[Session.submit]
+        Sub -->|optimistic apply<br/>seq = lastSeq+ε| M
+        Sub -->|wire| H
     end
 
     subgraph Renderer["Renderer — owns canvas + rAF"]
         D --> RAF{dirty?}
         RAF -->|no| Skip[skip frame — zero work]
-        RAF -->|yes| Cull[bbox culling<br/>vs world view rect]
-        Cull --> Draw[per-kind draw<br/>rect/ellipse/line/text/path/image]
-        Draw --> Cur[cursor dots + labels]
+        RAF -->|yes| Cull[QuadTree.visibleIn<br/>view rect → z-sorted]
+        Cull --> Draw[per-kind draw + selection]
     end
 
     subgraph React["React — mounts only"]
-        App[App.tsx] -->|mouse| VP[pan / zoomAt → markDirty]
-        App -->|reads| Stats[stats overlay @10Hz]
+        App[App.tsx] -->|mouse/keys| Editor
+        App -->|pan/zoom| D
     end
-
-    RAF -.->|onFrame throttled| Stats

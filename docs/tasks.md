@@ -242,18 +242,32 @@ fps) на ~10Гц. Кнопки: Join, Spawn rect (реальный op), Stress 
 
 ---
 
-## T-9 · Фронт: редактирование + QuadTree · `todo` · M–L
+## T-9 · Фронт: редактирование + QuadTree · `review` · M–L
 
-**Devin пишет:** инструменты (select/move/resize/create по типам),
-оптимистичный локальный apply + reconcile с серверным ответом,
-QuadTree для hit-test и viewport-culling.
+*Реализовано: `web/src/{geometry,quadtree,editor}.ts`, session
+переписан на optimistic+rebase, model → nested regs + version,
+renderer → quadtree-culling + selection. `Document.Objects()` на
+сервере тоже ушёл с O(n²) на вложенные регистры. §20, диаграмма
+обновлена. lint+build чисто, 31/31.*
 
-**Ревью-чеклист:** оптимистичная op отвергнута/переупорядочена —
-что видит юзер · QuadTree: когда перестраивать/перебалансировать ·
-hit-test vs draw-order (кто сверху?).
+**Что написано:** оптимистичный apply с дробным temp-seq
+(`lastSeq+ε`, cap 0.9995 — никогда не целое): отката нет, LWW
+сходится; pending[clientSeq] → rebase+resubmit на rejoin.
+Инструменты select/move/resize(BR)/create(rect,ellipse,line,text)/
+Delete; драг: локальный apply каждый кадр + wire-patch 80мс +
+flush на mouseup; дельты от props на mouseDown. QuadTree cap8/
+depth10, rebuild-on-version; hit-test topmost по z (bbox).
+
+**Ревью-чеклист:** найди все три места, где temp-seq может
+«обмануть» кого-то (remote op, echo, lastSeq) — и почему каждое
+покрыто · `patchThrottled` vs `applyLocal` — что едет на провод, а
+что нет; сколько ops генерирует 5-секундный драг? · hit-test
+topmost — почему sort desc z, а не первый попавшийся.
 
 **Gate:** локальный apply и сервер разошлись — где в коде точка
-примирения? Чем QuadTree лучше `array.find` на 10k?
+примирения (и почему это НЕ откат)? Чем QuadTree лучше
+`array.find` на 10k — и где он хуже? Юзер драгает, WS умер —
+что увидит он, а что увидят другие после его rejoin?
 
 ---
 
