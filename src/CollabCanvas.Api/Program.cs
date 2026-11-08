@@ -11,6 +11,10 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 builder.Services.AddSingleton<CollabCanvas.Core.Journal.IOpJournalFactory,
     CollabCanvas.Api.Journal.RedisOpJournalFactory>();
 builder.Services.AddSingleton<CollabCanvas.Core.Room.RoomManager>();
+builder.Services.AddSingleton<CollabCanvas.Core.Room.IRoomTransport,
+    CollabCanvas.Api.Journal.RedisRoomTransport>();
+builder.Services.AddSingleton<CollabCanvas.Api.Presence.OpRouter>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CollabCanvas.Api.Presence.OpRouter>());
 builder.Services.AddHostedService<CollabCanvas.Api.Presence.PresenceSweeper>();
 // Redis is the journal (T-5) — the app must boot without it.
 // AbortOnConnectFail=false: the mux returns immediately and retries

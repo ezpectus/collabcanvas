@@ -1,3 +1,4 @@
+using CollabCanvas.Core.Journal;
 using CollabCanvas.Core.Protocol;
 using CollabCanvas.Core.Room;
 using Microsoft.AspNetCore.SignalR;
@@ -5,48 +6,70 @@ using Microsoft.AspNetCore.SignalR;
 namespace CollabCanvas.Api.Hubs;
 
 /// <summary>
-/// Document room endpoint — thin SignalR adapter over <see cref="Room"/>.
-/// The room owns ALL ordering/dedup/apply (pure, unit-testable); the
-/// hub only moves messages: join → ops-since + presence snapshot,
-/// submit → ack to author + broadcast to the group.
-///
-/// Presence (T-7): the tracker's Update() doubles as heartbeat and
-/// rate-limiter — it answers "fan out now?" while always refreshing
-/// TTL. Dead cursors are announced by the sweeper (TTL) or eagerly on
-/// socket disconnect.
+/// Document room endpoint — thin SignalR adapter (T-10 wiring).
+/// Ordering/dedup/apply live in the Room on the OWNING instance;
+/// this hub only routes:
+/// - submit: owner → Room.Submit → transport.Broadcast (OpRouter
+///   fans it to all groups incl. this one); non-owner → publish to
+///   the owner's inbox, ack "forwarded" (the echo carries real seq).
+/// - join: owner → Room.Join; non-owner → built straight from the
+///   journal — ops/snapshot are in Redis, no room needed locally.
 /// </summary>
-public sealed class DocumentHub(RoomManager rooms) : Hub
+public sealed class DocumentHub(
+    RoomManager rooms,
+    IRoomTransport transport,
+    IOpJournalFactory journals) : Hub
 {
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
         var room = rooms.GetOrCreate(req.DocId);
         await Groups.AddToGroupAsync(Context.ConnectionId, req.DocId);
         rooms.TrackConnection(Context.ConnectionId, req.DocId, req.ClientId);
-        var join = room.Join(req.ClientId, req.LastSeq);
 
-        // Late joiner sees everyone else's cursors — presence is
-        // ephemeral, so it goes outside the JoinResult ops contract.
-        await Clients.Caller.SendAsync("presence-state",
-            room.Presence.Current());
-        return join;
+        if (transport.Owns(req.DocId))
+        {
+            var join = room.Join(req.ClientId, req.LastSeq);
+            await Clients.Caller.SendAsync("presence-state", room.Presence.Current());
+            return join;
+        }
+
+        // Non-owner: answer from the durable journal directly.
+        var store = journals.ForDoc(req.DocId);
+        var snap = store.LoadSnapshot();
+        if (req.LastSeq >= store.FirstSeq)
+        {
+            var tail = store.ReadSince(req.LastSeq);
+            var lastSeq = Math.Max(snap?.Seq ?? 0,
+                tail.Count > 0 ? tail[^1].Seq : 0);
+            return new JoinResult(req.DocId, lastSeq, null, snap?.Seq ?? 0, tail);
+        }
+        var sinceSnap = store.ReadSince(snap?.Seq ?? 0);
+        return new JoinResult(req.DocId,
+            Math.Max(snap?.Seq ?? 0, sinceSnap.Count > 0 ? sinceSnap[^1].Seq : 0),
+            snap is null ? null : System.Text.Json.JsonDocument.Parse(snap.Json).RootElement,
+            snap?.Seq ?? 0, sinceSnap);
     }
 
-    public async Task LeaveDocument(string docId)
-    {
+    public async Task LeaveDocument(string docId) =>
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, docId);
-    }
 
     public async Task<OpAck> SubmitOp(OpSubmit op)
     {
-        var room = rooms.GetOrCreate(op.DocId);
-        var result = room.Submit(op);
+        if (transport.Owns(op.DocId))
+        {
+            var room = rooms.GetOrCreate(op.DocId);
+            var result = room.Submit(op);
+            // Fanout goes through the transport (OpRouter → group) so
+            // multi-instance behaves identically to single-instance.
+            await transport.BroadcastAsync(result.Broadcast);
+            return new OpAck(op.ClientSeq, result.Broadcast.Seq,
+                Accepted: true, Reason: result.IsNew ? null : "duplicate");
+        }
 
-        // Broadcast to EVERYONE incl. author — the author reconciles
-        // its optimistic apply against the echoed seq (T-9).
-        await Clients.Group(op.DocId).SendAsync("op", result.Broadcast);
-
-        return new OpAck(op.ClientSeq, result.Broadcast.Seq,
-            Accepted: true, Reason: result.IsNew ? null : "duplicate");
+        await transport.SubmitRemoteAsync(op);
+        // seq unknown until the owner sequences it — the echo
+        // broadcast carries it; -1 = "forwarded, watch the stream".
+        return new OpAck(op.ClientSeq, -1, Accepted: true, Reason: "forwarded");
     }
 
     public async Task Presence(PresenceUpdate update)

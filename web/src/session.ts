@@ -41,7 +41,13 @@ export class Session {
     this.clientId = clientId
     const conn = new signalR.HubConnectionBuilder()
       .withUrl(url)
-      .withAutomaticReconnect()
+      // Reconnect storm handling (T-10): exp backoff + full jitter —
+      // a server restart drops ALL clients at once; synchronized
+      // retries would stampede it back down.
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (ctx) =>
+          Math.random() * Math.min(30_000, 1000 * 2 ** ctx.previousRetryCount),
+      })
       .build()
 
     conn.on('op', (op: OpBroadcast) => {
