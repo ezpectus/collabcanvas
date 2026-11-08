@@ -35,15 +35,36 @@ OT/CRDT: центральный сервер снимает сложность �
 
 ---
 
-## T-2 · Скелет решения · `todo` · S
+## T-2 · Скелет решения · `review` · S
 
-**Devin пишет:** `CollabCanvas.sln` (Api + Core + tests), Vite +
-React + TS фронт, `docker-compose.yml` (api, web, redis), CI-минимум.
+*Скелет собран и проверен: `dotnet build` чисто, 3/3 тестов,
+`npm run build` + `oxlint` чисто. Ждёт ревью юзера.*
+
+**Что написано:** `CollabCanvas.sln` + `src/CollabCanvas.Core`
+(протокол-контракт `Protocol/Messages.cs`: JoinDocument,
+OpSubmit/OpAck/OpBroadcast, PresenceUpdate, OpType) +
+`src/CollabCanvas.Api` (`Program.cs`: health с ping'ом Redis —
+fail-open 503 degraded; CORS для :5173/:3100; MapHub) +
+`Hubs/DocumentHub.cs` (join/leave — реальные SignalR-группы;
+SubmitOp → честный `accepted:false "not-implemented"` до T-4;
+presence fanout в группу) + `tests/` (health-контракт, negotiate,
+round-trip протокола — `WebApplicationFactory`) + `web/` (Vite 6 +
+React 18 + strict TS: `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes` и др.; панель join через
+`@microsoft/signalr`; canvas-заглушка) + `docker-compose.yml`
+(redis host:6380 — 6379 занят Notification'ом; api :8090;
+web :3100 через nginx c ws-upgrade) + `.github/workflows/ci.yml`
+(api job + web job) + `docs/diagrams/mmd/system.mmd`.
 
 **Ревью-чеклист:** кто за что отвечает из сервисов · что умирает
-при падении каждого · где граница Core/Api.
+при падении каждого · где граница Core/Api (подсказка: Core —
+чистые контракты без зависимостей; Api — транспорт/хабы; зачем
+вообще два проекта?) · `SubmitOp` сейчас лжёт клиенту не «упал»,
+а честно отвечает not-implemented — почему это лучше, чем молча
+принимать и терять?
 
-**Gate:** назвать каждый сервис и эффект его падения.
+**Gate:** назвать каждый сервис и эффект его падения. Что
+происходит, когда падает redis — health что покажет, хаб умрёт?
 
 ---
 
