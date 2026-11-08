@@ -91,13 +91,35 @@ public sealed class Document
         }
     }
 
+    /// <summary>Rehydrate from a <see cref="Snapshot"/> taken at
+    /// <paramref name="seq"/>. Every restored register gets propSeq=seq:
+    /// any op ≤ seq is already baked into the snapshot (replay loses by
+    /// LWW), and ops &gt; seq apply normally on top. Tombstones of objects
+    /// deleted before the snapshot are NOT carried — the truncated
+    /// journal below snapSeq can never re-delete them.</summary>
+    public void Restore(string snapshotJson, long seq)
+    {
+        foreach (var obj in JsonDocument.Parse(snapshotJson).RootElement.EnumerateArray())
+        {
+            var id = obj.GetProperty("Id").GetString()!;
+            _createSeq[id] = seq;
+            WriteProp(id, KindKey, obj.GetProperty("Kind"), seq);
+            WriteProp(id, ZKey, obj.GetProperty("Z"), seq);
+            foreach (var p in obj.GetProperty("Props").EnumerateObject())
+                WriteProp(id, p.Name, p.Value, seq);
+        }
+        if (seq > LastSeq) LastSeq = seq;
+    }
+
     /// <summary>Deterministic snapshot — two replicas holding the same
     /// writes produce byte-identical JSON. Used by convergence tests
     /// and T-5 snapshot persistence.</summary>
     public string Snapshot() =>
         JsonSerializer.Serialize(Objects().OrderBy(o => o.Z, StringComparer.Ordinal)
             .ThenBy(o => o.Id, StringComparer.Ordinal)
-            .Select(o => new { o.Id, o.Kind, o.Z, Props = o.Props.OrderBy(p => p.Key, StringComparer.Ordinal) }));
+            .Select(o => new { o.Id, o.Kind, o.Z,
+                Props = new SortedDictionary<string, JsonElement>(
+                    new Dictionary<string, JsonElement>(o.Props), StringComparer.Ordinal) }));
 }
 
 public sealed record CanvasObject(
