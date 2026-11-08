@@ -8,6 +8,26 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-12 полировка: path + presence + eviction [D]
+
+- `web/src/editor.ts` — инструмент `path`: локальный create/patch
+  в драге, один Create на mouseup, local-delete на отмене;
+  отброс точек <1.5wu
+- `IRoomTransport` — `PublishPresenceAsync`/`OnPresence` (Core +
+  Local); `RedisRoomTransport` — канал `doc:{id}:pres`, fail-open
+- `DocumentHub.Presence` → транспорт; `OpRouter` релеирует
+  presence в группы (cross-instance)
+- `Room.LastActivity`, `RoomManager.EvictIdle(10min)` —
+  вызов из PresenceSweeper'а; eviction-test в `PresenceTests`
+- `architecture.md` §22 + UPD §21.6, tasks T-12, PLAN +3
+
+## 2026-11-08 — T-11 README + демо + perf [docs]
+
+- `README.md` (EN) — картинка архитектуры, модель, запуск,
+  what's proven / honest limitations
+- `docs/guides/demo.md` — 4 акта демо + gate-вопросы
+- tasks T-11 → `review` (+ perf-pass отчёт в тикете)
+
 ## 2026-11-08 — T-10 scale-out + хаос [D]
 
 - `Core/Room/IRoomTransport.cs` — контракт owner/inbox/outbox +

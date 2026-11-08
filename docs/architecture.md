@@ -587,3 +587,33 @@ RedisRoomTransport.cs`, `Api/Presence/OpRouter.cs`, хаб переписан.
 6. Presence остался per-instance — курсор виден только клиентам
    того же инстанса (второй канал pub/sub для presence не завёден:
    эфемерность не стоит ещё одного fanout-пути в MVP).
+   **UPD T-12:** канал `doc:{id}:pres` заведён — presence ходит
+   между инстансами; остаточный край — presence-state snapshot на
+   join видит только локальные курсоры (трекер per-instance).
+
+---
+
+## 22. Полировка (T-12, реализовано)
+
+Три края закрыты вне очереди.
+
+**Freehand `path` (фронт):** локальный create/patch во время драга
+— точек сотни, журнал патчами не засирается; `Create` с полным
+списком точек уходит одним op на mouseup (эхо переписывает temp
+по настоящему seq). Отмена — локальный Delete, на проводе тишина.
+Точки ближе ~1.5 world-units отбрасываются — payload имеет цену.
+Нет RDP-simplification — длинный штрих = большой op.
+
+**Presence через bus:** `IRoomTransport.PublishPresenceAsync` →
+`doc:{id}:pres` → OpRouter → группа (клиент фильтрует свой id).
+Redis-сбой → локальная доставка (fail-open как у остального).
+Известный остаток: snapshot курсоров для joiner'а — только его
+инстанс.
+
+**Room eviction:** `Room.LastActivity` (submit/join) +
+`RoomManager.EvictIdle(10min, now)` в тике PresenceSweeper'а —
+комната без presence и активности уходит из памяти; следующий
+контакт восстанавливает из snapshot+journal. Presence-count —
+защита от выгрузки комнаты с молчаливыми зрителями (на своём
+инстансе — чужих зрителей видно только через :pres-трафик, что
+честно оговорено).
