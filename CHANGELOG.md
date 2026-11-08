@@ -8,6 +8,12 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — бэклог T-15..T-20 [docs]
+
+- `tasks.md` — хвост работы: inline-текст, 8-хендл resize, undo,
+  чужое выделение, список документов, perf-harness
+- `roadmap.md` — ссылка на живые тикеты
+
 ## 2026-11-08 — T-14 канва-фичи [D]
 
 - `web/src/editor.ts` — Set-выделение: marquee, Shift-click,
