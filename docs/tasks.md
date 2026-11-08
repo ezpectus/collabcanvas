@@ -97,19 +97,29 @@ seq 5 и 12 — что видно и почему регистры не «пер
 
 ---
 
-## T-4 · SignalR hub + RoomManager · `todo` · M
+## T-4 · SignalR hub + RoomManager · `review` · M
 
-**Devin пишет:** `DocumentHub` (join/leave/submit op), `Room` —
-упорядоченный op-стрим на документ (seq назначает сервер),
-broadcast всем подключённым; join → snapshot + ops-since.
+*Реализовано: `Core/Room/Room.cs` + `RoomManager`, хаб переписан
+на реальный Room, 5 тестов комнаты (14/14 набор). §15 +
+`mmd/seq-flow.mmd`.*
 
-**Ревью-чеклист:** кто назначает seq и где точка упорядочивания ·
-клиент получил seq с дыркой — что должен сделать · состояние
-комнаты в памяти — переживает ли reconnect клиента? рестарт
-сервера?
+**Что написано:** `Room.Submit` под одним lock — dedup по
+`(clientId, clientSeq)` → seq = lastSeq+1 → apply → journal.
+Ретрай возвращает исходный seq (`IsNew=false`). Хаб — адаптер:
+broadcast группе (включая автора — reconcile по эхо-seq), ack
+автору. `Join(lastSeq)` → ops seq>lastSeq.
+
+**Ревью-чеклист:** в `Submit` найди два места, где дедуп может
+промахнуться (подсказка: `_ackIndex` vs `_lastClientSeq` — что
+каждый ловит?) · тест `Submit_ConcurrentClients` доказывает
+gapless seq — почему lock, а не Interlocked? · broadcast идёт
+автору тоже — где в протоколе поле, по которому автор узнает свой
+op?
 
 **Gate:** клиент отвалился на 5 секунд и вернулся — как догоняет?
-Два серверных инстанса и одна комната — что ломается?
+Клиент отправил op, WS умер до ack — что шлёт клиент и что
+отвечает сервер? Два серверных инстанса и одна комната — что
+ломается?
 
 ---
 

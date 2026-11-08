@@ -24,3 +24,6 @@
 | 2026-11-08 | Apply-модель: ВСЁ — LWW-регистр (включая `_kind`/`_z` и само существование: createSeq vs deleteSeq) | Альтернатива «patch на отсутствующий объект = ошибка» ломала бы convergence-shuffle; регистры делают apply order-agnostic по построению — идемпотентность бесплатно через `seq <= propSeq` |
 | 2026-11-08 | Patch не воскрешает удалённое — только Create с seq > deleteSeq | Видимость решает пара createSeq/deleteSeq, не «есть ли props» — patch к мёртвому объекту безвредно пишет регистры и проигрывает позднему create |
 | 2026-11-08 | Redis-коннект `abortConnect=false` — приложение обязано вставать без Redis | Eager Connect ронял старт/тесты; mux ретраит в фоне, health честно degraded. Тесты герметичны |
+| 2026-11-08 | Room — чистая логика в Core, хаб — тонкий SignalR-адаптер | Тесты бьют комнату без TestServer/WS; точка упорядочивания (lock) тестируется Parallel.For напрямую |
+| 2026-11-08 | Broadcast идёт и автору (Group, не OthersInGroup) | Автор получает серверный seq по эхо — база optimistic-reconcile в T-9; дубль на клиенте режется `seq <= lastSeq` |
+| 2026-11-08 | Dedup ретрая через `_ackIndex` (clientId,clientSeq)→seq, НЕ через `_lastClientSeq` | Watermark «отбросить всё <= last» съедал бы out-of-order submits; точный индекс отвечает ровно исходным seq |

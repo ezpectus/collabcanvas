@@ -8,6 +8,17 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-4 комната + seq [D]
+
+- `Core/Room/Room.cs` + `RoomManager` — dedup/seq/apply/journal
+  под локом, `_ackIndex` для ретраев
+- `Hubs/DocumentHub.cs` — адаптер на реальный Room (join→ops-since,
+  submit→broadcast+ack), broadcast включая автора
+- `RoomTests` (5 шт): seq-порядок, retry-dedup, join catch-up,
+  изоляция комнат, gapless seq под Parallel.For
+- `docs/diagrams/mmd/seq-flow.mmd`, `architecture.md` §15,
+  tasks T-4 → `review`, PLAN +3
+
 ## 2026-11-08 — T-3 модель + apply [D]
 
 - `60f46cb` — `Core/Model/Document.cs` (LWW-регистры, createSeq
