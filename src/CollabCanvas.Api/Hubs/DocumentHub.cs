@@ -18,7 +18,8 @@ namespace CollabCanvas.Api.Hubs;
 public sealed class DocumentHub(
     RoomManager rooms,
     IRoomTransport transport,
-    IOpJournalFactory journals) : Hub
+    IOpJournalFactory journals,
+    OpRateLimiter opLimit) : Hub
 {
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
@@ -55,6 +56,14 @@ public sealed class DocumentHub(
 
     public async Task<OpAck> SubmitOp(OpSubmit op)
     {
+        // T-13: validate + rate-limit BEFORE the room — a malformed op
+        // must never reach the journal, and one scripted client must
+        // never mint ops at network speed.
+        if (!opLimit.Allow(Context.ConnectionId, DateTimeOffset.UtcNow))
+            return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: "rate-limited");
+        if (OpValidator.Validate(op) is { } why)
+            return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: $"invalid: {why}");
+
         if (transport.Owns(op.DocId))
         {
             var room = rooms.GetOrCreate(op.DocId);
@@ -89,6 +98,7 @@ public sealed class DocumentHub(
     /// ghost for the full TTL.</summary>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        opLimit.Drop(Context.ConnectionId);
         foreach (var (docId, clientId) in rooms.UntrackConnection(Context.ConnectionId))
             await Clients.Group(docId)
                 .SendAsync("presence-left", new PresenceLeft(docId, clientId));

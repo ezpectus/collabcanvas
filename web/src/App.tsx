@@ -3,6 +3,7 @@ import { Session } from './session'
 import { Renderer, type FrameStats } from './renderer'
 import { SceneIndex } from './quadtree'
 import { Editor, type Tool } from './editor'
+import { boundsOf } from './geometry'
 
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
@@ -37,7 +38,8 @@ export default function App() {
       session().model,
       indexRef.current,
       () => session().cursors.values(),
-      () => editorRef.current?.selectionBox() ?? null,
+      () => editorRef.current?.selectionQuads() ?? [],
+      () => editorRef.current?.marqueeRect() ?? null,
     )
     rendererRef.current = r
     r.onFrame = (s) => { if (++statTick.current % 6 === 0) setStats({ ...s }) }
@@ -81,7 +83,20 @@ export default function App() {
         v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text', p: 'path',
       }
       if (map[e.key]) { editor().tool = map[e.key]!; setTool(map[e.key]!) }
-      editor().key(e.key)
+      if (e.key === '1') { // zoom-to-fit — whole document in view
+        const objs = session().model.objects()
+        if (objs.length) {
+          let b = boundsOf(objs[0]!)!
+          for (const o of objs) {
+            const ob = boundsOf(o)
+            if (ob) b = { x0: Math.min(b.x0, ob.x0), y0: Math.min(b.y0, ob.y0),
+                          x1: Math.max(b.x1, ob.x1), y1: Math.max(b.y1, ob.y1) }
+          }
+          rendererRef.current?.fitBounds(b)
+        }
+      }
+      if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
+      editor().key(e.key, e.ctrlKey || e.metaKey)
     }
     const up = (e: KeyboardEvent) => { if (e.key === ' ') spaceDown.current = false }
     window.addEventListener('keydown', down)
@@ -141,7 +156,8 @@ export default function App() {
             if (panning(e)) panDrag.current = { x: e.clientX, y: e.clientY }
             else if (e.button === 0) {
               const w = world(e)
-              editor().mouseDown(w.x, w.y, rendererRef.current!.view.scale)
+              editor().mouseDown(w.x, w.y, rendererRef.current!.view.scale,
+                e.shiftKey)
             }
           }}
           onMouseUp={() => { panDrag.current = null; editor().mouseUp() }}

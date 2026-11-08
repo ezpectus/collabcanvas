@@ -23,6 +23,9 @@ public sealed class OpRouter(
     {
         transport.OnSubmit += submit =>
         {
+            // Defense in depth: inbox ops come from peer hubs that
+            // already validated, but a rogue publisher hasn't.
+            if (OpValidator.Validate(submit) is not null) return;
             var room = rooms.GetOrCreate(submit.DocId);
             var r = room.Submit(submit);
             _ = transport.BroadcastAsync(r.Broadcast);

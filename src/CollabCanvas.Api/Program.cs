@@ -11,6 +11,7 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 builder.Services.AddSingleton<CollabCanvas.Core.Journal.IOpJournalFactory,
     CollabCanvas.Api.Journal.RedisOpJournalFactory>();
 builder.Services.AddSingleton<CollabCanvas.Core.Room.RoomManager>();
+builder.Services.AddSingleton(new CollabCanvas.Core.Room.OpRateLimiter());
 builder.Services.AddSingleton<CollabCanvas.Core.Room.IRoomTransport,
     CollabCanvas.Api.Journal.RedisRoomTransport>();
 builder.Services.AddSingleton<CollabCanvas.Api.Presence.OpRouter>();

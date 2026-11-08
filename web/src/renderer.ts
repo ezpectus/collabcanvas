@@ -32,7 +32,8 @@ export class Renderer {
     private readonly model: DocModel,
     private readonly index: SceneIndex,
     private readonly getCursors: () => Iterable<PresenceUpdate>,
-    private readonly getSelection: () => BBox | null,
+    private readonly getSelection: () => { x: number; y: number }[][],
+    private readonly getMarquee: () => BBox | null,
   ) {}
 
   markDirty(): void { this.dirty = true }
@@ -121,8 +122,15 @@ export class Renderer {
     for (const o of objects) drawObject(ctx, o)
     const drawn = objects.length
 
-    const sel = this.getSelection()
-    if (sel) this.drawSelection(ctx, sel)
+    for (const quad of this.getSelection()) this.drawSelection(ctx, quad)
+    const mq = this.getMarquee()
+    if (mq) {
+      ctx.strokeStyle = '#5f8dff'
+      ctx.lineWidth = 1 / v.scale
+      ctx.setLineDash([4 / v.scale, 4 / v.scale])
+      ctx.strokeRect(mq.x0, mq.y0, mq.x1 - mq.x0, mq.y1 - mq.y0)
+      ctx.setLineDash([])
+    }
 
     // Remote cursors on top — world-space dots + client label.
     for (const u of this.getCursors()) {
@@ -140,18 +148,34 @@ export class Renderer {
     this.stats.drawn = drawn
   }
 
-  /** Dashed selection outline + bottom-right resize handle. */
-  private drawSelection(ctx: CanvasRenderingContext2D, b: BBox): void {
+  /** Zoom so the whole world-bounds fits with padding (hotkey `1`). */
+  fitBounds(b: BBox): void {
+    const parent = this.canvas.parentElement!
+    const w = parent.clientWidth, h = parent.clientHeight
+    const bw = Math.max(1, b.x1 - b.x0), bh = Math.max(1, b.y1 - b.y0)
+    this.view.scale = Math.min(8, Math.max(0.1,
+      Math.min(w / bw, h / bh) * 0.9))
+    this.view.x = w / 2 - ((b.x0 + b.x1) / 2) * this.view.scale
+    this.view.y = h / 2 - ((b.y0 + b.y1) / 2) * this.view.scale
+    this.markDirty()
+  }
+
+  /** Dashed selection outline (rotated quad) + BR resize handle. */
+  private drawSelection(ctx: CanvasRenderingContext2D,
+    quad: { x: number; y: number }[]): void {
     const v = this.view
-    const lw = 1.5 / v.scale
     ctx.strokeStyle = '#5f8dff'
-    ctx.lineWidth = lw
+    ctx.lineWidth = 1.5 / v.scale
     ctx.setLineDash([6 / v.scale, 4 / v.scale])
-    ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+    ctx.beginPath()
+    ctx.moveTo(quad[0]!.x, quad[0]!.y)
+    for (const pt of quad.slice(1)) ctx.lineTo(pt.x, pt.y)
+    ctx.closePath()
+    ctx.stroke()
     ctx.setLineDash([])
     const h = 8 / v.scale
     ctx.fillStyle = '#5f8dff'
-    ctx.fillRect(b.x1 - h / 2, b.y1 - h / 2, h, h)
+    ctx.fillRect(quad[2]!.x - h / 2, quad[2]!.y - h / 2, h, h)
   }
 }
 
@@ -159,6 +183,15 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
   const p = o.props
   const fill = str(p, 'fill', '#8892b0')
   const stroke = str(p, 'stroke', '')
+  const rot = num(p, 'rot')
+  if (rot) { // rotate around the object's own center
+    const cx = num(p, 'x') + num(p, 'w', 10) / 2
+    const cy = num(p, 'y') + num(p, 'h', 10) / 2
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.rotate((rot * Math.PI) / 180)
+    ctx.translate(-cx, -cy)
+  }
   switch (o.kind) {
     case 'rect':
       ctx.fillStyle = fill
@@ -212,4 +245,5 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       break
     }
   }
+  if (rot) ctx.restore()
 }

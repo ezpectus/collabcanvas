@@ -1,12 +1,11 @@
-// Editing tools (T-9): select/move/resize/create/delete over the
-// SceneIndex hit-test. All mutations go through Session.submit →
+// Editing tools (T-9, extended T-14): select/move/resize/rotate/
+// create/delete + multi-select (marquee & shift-click), duplicate,
+// z-order front/back. All mutations go through Session.submit →
 // optimistic local apply + server op — one code path, LWW reconciles.
 //
-// Drag semantics: local props update IMMEDIATELY via a Patch submit
-// throttled to 80ms (remote sees live-ish movement), final patch on
-// mouseup. Server may interleave foreign ops — the optimistic seq
-// ordering in Session keeps local view consistent, and the echo
-// converges.
+// Drag semantics unchanged: local apply per frame (free), wire Patch
+// throttled 80ms, final flush on mouseup. Deltas apply to props as of
+// mouseDown — no float drift, no mid-drag hijack by foreign patches.
 
 import { boundsOf, num, type BBox } from './geometry'
 import type { CanvasObject } from './model'
@@ -16,24 +15,38 @@ import type { Session } from './session'
 
 export type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'text' | 'path'
 
+/** Rotated quad for selection outlines: [TL, TR, BR, BL] in world. */
+export type Quad = { x: number; y: number }[]
+
 interface Drag {
-  mode: 'move' | 'resize' | 'create' | 'pan-hint'
+  mode: 'move' | 'resize' | 'rotate' | 'create' | 'marquee' | 'pan-hint'
   startX: number
   startY: number
-  /** original props at drag start — deltas apply to these, not to
-   * live values, so a long drag doesn't accumulate float error and
-   * foreign patches mid-drag don't hijack the gesture */
-  orig: Record<string, unknown> | null
-  objId: string | null
+  /** orig props per dragged object — deltas apply to these */
+  orig: Map<string, Record<string, unknown>>
+  center: { x: number; y: number } | null // rotate pivot
   moved: boolean
-  /** path only: the create lives locally until mouseup submits it */
   localCreate?: { id: string; z: string }
+}
+
+const rad = (deg: number) => (deg * Math.PI) / 180
+
+/** AABB → rotated quad corners around its center (rot degrees). */
+function quadOf(b: BBox, rotDeg: number): Quad {
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
+  const c = Math.cos(rad(rotDeg)), s = Math.sin(rad(rotDeg))
+  return [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]]
+    .map(([x, y]) => ({
+      x: cx + (x! - cx) * c - (y! - cy) * s,
+      y: cy + (x! - cx) * s + (y! - cy) * c,
+    }))
 }
 
 export class Editor {
   tool: Tool = 'select'
-  selectedId: string | null = null
+  readonly selected = new Set<string>()
   private drag: Drag | null = null
+  private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPatch = 0
 
   constructor(
@@ -42,115 +55,169 @@ export class Editor {
     private readonly redraw: () => void,
   ) {}
 
-  selectionBox(): BBox | null {
-    if (!this.selectedId) return null
-    const o = this.session.model.objects().find((o) => o.id === this.selectedId)
-    return o ? boundsOf(o) : null
+  private objects(): CanvasObject[] { return this.session.model.objects() }
+  private find(id: string): CanvasObject | undefined {
+    return this.objects().find((o) => o.id === id)
   }
 
-  private id(): string {
-    return `o-${Math.random().toString(36).slice(2, 10)}`
+  /** Selection outlines for the renderer: rotated quad per object. */
+  selectionQuads(): Quad[] {
+    const out: Quad[] = []
+    for (const id of this.selected) {
+      const o = this.find(id)
+      const b = o && boundsOf(o)
+      if (b) out.push(quadOf(b, num(o!.props, 'rot')))
+    }
+    return out
   }
+
+  marqueeRect(): BBox | null { return this.marquee }
+
+  private id(): string { return `o-${Math.random().toString(36).slice(2, 10)}` }
 
   private topZ(): string {
-    const top = this.session.model.objects().at(-1)?.z
+    const top = this.objects().at(-1)?.z
     return top ? FractionalIndex.after(top) : FractionalIndex.first()
   }
 
-  mouseDown(wx: number, wy: number, scale = 1): void {
-    if (this.tool === 'select') {
-      // Resize handle: bottom-right corner, 8 screen-px in world units.
-      const box = this.selectionBox()
-      const handle = 8 / scale
-      if (box && this.selectedId &&
-          wx >= box.x1 - handle && wx <= box.x1 + handle &&
-          wy >= box.y1 - handle && wy <= box.y1 + handle) {
-        const obj = this.find(this.selectedId)!
-        this.drag = { mode: 'resize', startX: wx, startY: wy,
-                      orig: { ...obj.props }, objId: obj.id, moved: false }
-        return
+  /** Bottom-right handle of a single selection, in world coords. */
+  private handlePos(scale: number): { x: number; y: number } | null {
+    if (this.selected.size !== 1) return null
+    const o = this.find([...this.selected][0]!)
+    const b = o && boundsOf(o)
+    if (!b) return null
+    void scale // handle size is taken in screen px by the caller's pad
+    return quadOf(b, num(o!.props, 'rot'))[2]! // BR corner
+  }
+
+  mouseDown(wx: number, wy: number, scale = 1, shift = false): void {
+    if (this.tool !== 'select') { this.createStart(wx, wy); return }
+
+    const hp = this.handlePos(scale)
+    const tol = 8 / scale
+    if (hp && Math.abs(wx - hp.x) <= tol && Math.abs(wy - hp.y) <= tol) {
+      const o = this.find([...this.selected][0]!)!
+      this.drag = {
+        mode: shift ? 'rotate' : 'resize',
+        startX: wx, startY: wy,
+        orig: new Map([[o.id, { ...o.props }]]),
+        center: shift
+          ? { x: (boundsOf(o)!.x0 + boundsOf(o)!.x1) / 2,
+              y: (boundsOf(o)!.y0 + boundsOf(o)!.y1) / 2 }
+          : null,
+        moved: false,
       }
-      const hit = this.index.hitTest(this.session.model, wx, wy)
-      this.selectedId = hit?.id ?? null
-      this.drag = hit
-        ? { mode: 'move', startX: wx, startY: wy,
-            orig: { ...hit.props }, objId: hit.id, moved: false }
-        : { mode: 'pan-hint', startX: wx, startY: wy,
-            orig: null, objId: null, moved: false }
-    } else if (this.tool === 'path') {
-      // Freehand: LOCAL-ONLY create while drawing — a path is a
-      // burst of points, sending it on the wire mid-drag would spam
-      // the journal with garbage ops. The real Create (full point
-      // list) is submitted once on mouseup; the echo overwrites the
-      // temp registers at a real seq.
-      const id = this.id()
-      const props = { points: [{ x: wx, y: wy }], stroke: '#e8eaf2', lineWidth: 2 }
-      const z = this.topZ()
-      this.session.applyLocal('Create', { id, kind: 'path', z, props })
-      this.selectedId = id
-      this.drag = { mode: 'create', startX: wx, startY: wy,
-                    orig: props, objId: id, moved: false,
-                    localCreate: { id, z } }
+      return
+    }
+
+    const hit = this.index.hitTest(this.session.model, wx, wy)
+    if (hit && shift) {
+      // Shift-click toggles membership.
+      if (this.selected.has(hit.id)) this.selected.delete(hit.id)
+      else this.selected.add(hit.id)
+      this.drag = { mode: 'pan-hint', startX: wx, startY: wy,
+                    orig: new Map(), center: null, moved: false }
+    } else if (hit) {
+      if (!this.selected.has(hit.id)) { this.selected.clear(); this.selected.add(hit.id) }
+      this.drag = {
+        mode: 'move', startX: wx, startY: wy,
+        orig: new Map([...this.selected]
+          .map((id) => [id, { ...this.find(id)!.props }])),
+        center: null, moved: false,
+      }
     } else {
-      // Create tools: drop a provisional object optimistically; the
-      // drag shapes it live, mouseup submits the final Create.
-      const id = this.id()
-      const props = this.tool === 'line'
-        ? { x1: wx, y1: wy, x2: wx, y2: wy, stroke: '#e8eaf2', lineWidth: 2 }
-        : { x: wx, y: wy, w: 1, h: 1,
-            fill: '#3d5af1', text: this.tool === 'text' ? 'text' : undefined,
-            fontSize: 16 }
-      this.session.submit('Create', { id, kind: this.tool, z: this.topZ(), props })
-      this.selectedId = id
-      this.drag = { mode: 'create', startX: wx, startY: wy,
-                    orig: props, objId: id, moved: false }
+      this.selected.clear()
+      this.marquee = { x0: wx, y0: wy, x1: wx, y1: wy }
+      this.drag = { mode: 'marquee', startX: wx, startY: wy,
+                    orig: new Map(), center: null, moved: false }
     }
     this.redraw()
   }
 
+  private createStart(wx: number, wy: number): void {
+    const id = this.id()
+    if (this.tool === 'path') {
+      // Local-only while drawing — see T-12: the wire gets one Create.
+      const z = this.topZ()
+      const props = { points: [{ x: wx, y: wy }], stroke: '#e8eaf2', lineWidth: 2 }
+      this.session.applyLocal('Create', { id, kind: 'path', z, props })
+      this.selected.clear(); this.selected.add(id)
+      this.drag = { mode: 'create', startX: wx, startY: wy,
+                    orig: new Map([[id, props]]), center: null,
+                    moved: false, localCreate: { id, z } }
+      return
+    }
+    const props = this.tool === 'line'
+      ? { x1: wx, y1: wy, x2: wx, y2: wy, stroke: '#e8eaf2', lineWidth: 2 }
+      : { x: wx, y: wy, w: 1, h: 1, rot: 0,
+          fill: '#3d5af1', text: this.tool === 'text' ? 'text' : undefined,
+          fontSize: 16 }
+    this.session.submit('Create', { id, kind: this.tool, z: this.topZ(), props })
+    this.selected.clear(); this.selected.add(id)
+    this.drag = { mode: 'create', startX: wx, startY: wy,
+                  orig: new Map([[id, props]]), center: null, moved: false }
+  }
+
   mouseMove(wx: number, wy: number): void {
     const d = this.drag
-    if (!d || !d.objId || !d.orig) return
-    d.moved = true
+    if (!d) return
     const dx = wx - d.startX
     const dy = wy - d.startY
+    d.moved = true
 
-    if (d.mode === 'move') {
-      this.patchThrottled(d.objId, {
-        x: num(d.orig, 'x') + dx, y: num(d.orig, 'y') + dy,
-        x1: d.orig['x1'] !== undefined ? num(d.orig, 'x1') + dx : undefined,
-        y1: d.orig['y1'] !== undefined ? num(d.orig, 'y1') + dy : undefined,
-        x2: d.orig['x2'] !== undefined ? num(d.orig, 'x2') + dx : undefined,
-        y2: d.orig['y2'] !== undefined ? num(d.orig, 'y2') + dy : undefined,
-      })
-    } else if (d.mode === 'resize') {
-      this.patchThrottled(d.objId, {
-        w: Math.max(2, num(d.orig, 'w', 1) + dx),
-        h: Math.max(2, num(d.orig, 'h', 1) + dy),
-      })
-    } else if (d.mode === 'create') {
-      if (d.localCreate) {
-        // Freehand: extend the point list locally (wire is silent
-        // until mouseup). Points thinner than ~1.5 world-units are
-        // dropped — the list is the op payload, it has a size cost.
-        const pts = d.orig['points'] as { x: number; y: number }[]
-        const last = pts[pts.length - 1]!
-        if ((wx - last.x) ** 2 + (wy - last.y) ** 2 > 2.25) {
-          pts.push({ x: wx, y: wy })
-          this.session.applyLocal('Patch',
-            { id: d.objId, props: { points: pts } })
-          this.redraw()
-        }
-        return
-      }
-      const props = this.find(d.objId)?.props
-      if (props?.['x1'] !== undefined) {
-        this.patchThrottled(d.objId, { x2: wx, y2: wy })
-      } else {
-        this.patchThrottled(d.objId, {
-          x: Math.min(d.startX, wx), y: Math.min(d.startY, wy),
-          w: Math.abs(dx), h: Math.abs(dy),
+    if (d.mode === 'marquee') {
+      this.marquee = { x0: Math.min(d.startX, wx), y0: Math.min(d.startY, wy),
+                       x1: Math.max(d.startX, wx), y1: Math.max(d.startY, wy) }
+      this.redraw()
+      return
+    }
+
+    if (d.mode === 'rotate' && d.center) {
+      const a0 = Math.atan2(d.startY - d.center.y, d.startX - d.center.x)
+      const a1 = Math.atan2(wy - d.center.y, wx - d.center.x)
+      const deg = ((a1 - a0) * 180) / Math.PI
+      for (const [oid, orig] of d.orig)
+        this.patchThrottled(oid, { rot: (num(orig, 'rot') + deg + 360) % 360 })
+      return
+    }
+
+    for (const [oid, orig] of d.orig) {
+      if (d.mode === 'move') {
+        this.patchThrottled(oid, {
+          x: orig['x'] !== undefined ? num(orig, 'x') + dx : undefined,
+          y: orig['y'] !== undefined ? num(orig, 'y') + dy : undefined,
+          x1: orig['x1'] !== undefined ? num(orig, 'x1') + dx : undefined,
+          y1: orig['y1'] !== undefined ? num(orig, 'y1') + dy : undefined,
+          x2: orig['x2'] !== undefined ? num(orig, 'x2') + dx : undefined,
+          y2: orig['y2'] !== undefined ? num(orig, 'y2') + dy : undefined,
+          points: orig['points'] !== undefined
+            ? (orig['points'] as { x: number; y: number }[])
+                .map((p) => ({ x: p.x + dx, y: p.y + dy }))
+            : undefined,
         })
+      } else if (d.mode === 'resize') {
+        this.patchThrottled(oid, {
+          w: Math.max(2, num(orig, 'w', 1) + dx),
+          h: Math.max(2, num(orig, 'h', 1) + dy),
+        })
+      } else if (d.mode === 'create') {
+        if (d.localCreate) {
+          const pts = orig['points'] as { x: number; y: number }[]
+          const last = pts[pts.length - 1]!
+          if ((wx - last.x) ** 2 + (wy - last.y) ** 2 > 2.25) {
+            pts.push({ x: wx, y: wy })
+            this.session.applyLocal('Patch',
+              { id: oid, props: { points: pts } })
+            this.redraw()
+          }
+        } else if (orig['x1'] !== undefined) {
+          this.patchThrottled(oid, { x2: wx, y2: wy })
+        } else {
+          this.patchThrottled(oid, {
+            x: Math.min(d.startX, wx), y: Math.min(d.startY, wy),
+            w: Math.abs(dx), h: Math.abs(dy),
+          })
+        }
       }
     }
   }
@@ -159,50 +226,98 @@ export class Editor {
     const d = this.drag
     this.drag = null
     if (!d) return
-    // A create-drag that never moved → degenerate object; delete it
-    // rather than leaving a 1px artifact on everyone's screen.
-    if (d.mode === 'create' && !d.moved && d.objId) {
-      if (d.localCreate)
-        this.session.applyLocal('Delete', { id: d.objId }) // never hit the wire
-      else
-        this.session.submit('Delete', { id: d.objId })
-      this.selectedId = null
+
+    if (d.mode === 'marquee') {
+      const m = this.marquee!
+      this.marquee = null
+      if (d.moved)
+        for (const o of this.objects()) {
+          const b = boundsOf(o)
+          if (b && !(b.x1 < m.x0 || b.x0 > m.x1 || b.y1 < m.y0 || b.y0 > m.y1))
+            this.selected.add(o.id)
+        }
+      this.redraw()
+      return
+    }
+
+    if (d.mode === 'create' && !d.moved) {
+      for (const oid of d.orig.keys()) {
+        if (d.localCreate) this.session.applyLocal('Delete', { id: oid })
+        else this.session.submit('Delete', { id: oid })
+        this.selected.delete(oid)
+      }
     } else if (d.localCreate) {
-      // The freehand path lands on the wire ONCE, fully formed.
       this.session.submit('Create', {
         id: d.localCreate.id, kind: 'path', z: d.localCreate.z,
-        props: d.orig!,
+        props: d.orig.get(d.localCreate.id)!,
       })
-    } else if (d.objId) {
-      // The 80ms throttle may have dropped the LAST drag position —
-      // flush the object's current props so the wire ends where the
-      // mouse did.
-      const props = this.find(d.objId)?.props
-      if (props) {
+    } else if (d.moved) {
+      // Throttle may have dropped the last frame — flush final props.
+      for (const oid of d.orig.keys()) {
+        const props = this.find(oid)?.props
+        if (!props) continue
         const flush: Record<string, unknown> = {}
-        for (const k of ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2'])
+        for (const k of ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2', 'rot', 'points'])
           if (props[k] !== undefined) flush[k] = props[k]
-        this.session.submit('Patch', { id: d.objId, props: flush })
+        this.session.submit('Patch', { id: oid, props: flush })
       }
     }
     this.redraw()
   }
 
-  key(key: string): void {
-    if ((key === 'Delete' || key === 'Backspace') && this.selectedId) {
-      this.session.submit('Delete', { id: this.selectedId })
-      this.selectedId = null
+  /** Keys that mutate the document or selection. */
+  key(key: string, ctrl = false): void {
+    if (key === 'Delete' || key === 'Backspace') {
+      for (const id of this.selected) this.session.submit('Delete', { id })
+      this.selected.clear()
       this.redraw()
+      return
     }
+    if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
+    if (key === ']') { this.reorder(1); return }
+    if (key === '[') { this.reorder(-1); return }
   }
 
-  private find(id: string): CanvasObject | undefined {
-    return this.session.model.objects().find((o) => o.id === id)
+  /** Ctrl+D: clone each selected object at +20/+20, topmost z. */
+  private duplicate(): void {
+    const created = new Set<string>()
+    for (const oid of this.selected) {
+      const o = this.find(oid)
+      if (!o) continue
+      const nid = this.id()
+      const props = { ...o.props }
+      if (props['x'] !== undefined) {
+        props['x'] = num(props, 'x') + 20
+        props['y'] = num(props, 'y') + 20
+      } else if (props['points'] !== undefined) {
+        props['points'] = (props['points'] as { x: number; y: number }[])
+          .map((p) => ({ x: p.x + 20, y: p.y + 20 }))
+      } else if (props['x1'] !== undefined) {
+        for (const k of ['x1', 'x2']) props[k] = num(props, k) + 20
+        for (const k of ['y1', 'y2']) props[k] = num(props, k) + 20
+      }
+      this.session.submit('Create', { id: nid, kind: o.kind, z: this.topZ(), props })
+      created.add(nid)
+    }
+    this.selected.clear()
+    for (const id of created) this.selected.add(id)
+    this.redraw()
   }
 
-  /** Throttled patch: local optimistic apply every call (instant
-   * feedback), real submit at most every 80ms + always mark dirty.
-   * Undefined values are dropped — patch writes only real props. */
+  /** ] = bring to front, [ = send to back — one reorder op each. */
+  private reorder(dir: 1 | -1): void {
+    if (this.selected.size === 0) return
+    const objs = this.objects()
+    if (objs.length === 0) return
+    const edge = dir > 0 ? objs.at(-1)!.z : objs[0]!.z
+    for (const oid of this.selected) {
+      const z = dir > 0 ? FractionalIndex.after(edge) : FractionalIndex.before(edge)
+      this.session.submit('Reorder', { id: oid, z })
+    }
+    this.redraw()
+  }
+
+  /** Throttled patch: real submit ≤80ms, local apply otherwise. */
   private patchThrottled(id: string, props: Record<string, unknown>): void {
     const clean: Record<string, unknown> = {}
     for (const k in props) if (props[k] !== undefined) clean[k] = props[k]
@@ -211,12 +326,6 @@ export class Editor {
       this.lastPatch = now
       this.session.submit('Patch', { id, props: clean })
     } else {
-      // Between submits: apply locally without spending a clientSeq —
-      // direct model write via a synthetic patch keeps feedback instant.
-      // It rides on a fractional seq inside session.submit normally, so
-      // here we just reuse submit's path minus the wire: cheap trick —
-      // submit anyway but rely on server dedup? No: emit a LOCAL apply
-      // through session's optimistic path with zero wire cost.
       this.session.applyLocal('Patch', { id, props: clean })
     }
     this.redraw()
