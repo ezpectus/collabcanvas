@@ -8,6 +8,16 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-6 fractional indexing [D]
+
+- `Core/Model/FractionalIndex.cs` — `Between/First/After/Before`
+  на base-62 строках, инвариант trailing-zero
+- `FractionalIndexTests` (6 шт): порядок, края, детерминизм,
+  500 вставок без исчерпания, 200 случайных вставок → sort order,
+  невалидные входы
+- `docs/diagrams/mmd/z-order.mmd`, `architecture.md` §17,
+  tasks T-6 → `review`, PLAN +1
+
 ## 2026-11-08 — T-5 журнал + снапшоты + recovery [D]
 
 - `Core/Journal/IOpJournal.cs` — sync-контракт + `InMemoryOpJournal`

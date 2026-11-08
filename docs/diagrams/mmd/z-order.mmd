@@ -1,0 +1,17 @@
+%% T-6: fractional indexing — how a z-key is squeezed between neighbors.
+%% Update when: alphabet, Between() algorithm, or trailing-zero rule changes.
+flowchart TB
+    subgraph Keys["Base-62 digit string — ordinal sort = position"]
+        A["a"] --> K["?"] --> B["b"]
+    end
+
+    Between["Between(a,b)"] --> P{longest common prefix?}
+    P -->|n>0| Pref["b[0..n] + Between(suffixes)<br/>missing char reads as '0'"]
+    P -->|n=0| Gap{digit gap > 1?}
+    Gap -->|yes| Mid["pick middle digit"]
+    Gap -->|no| Ext["a's digit + Between(rest, +inf)<br/>→ key extends one level deeper"]
+
+    Warn["INVARIANT: keys never end in '0'<br/>(else 'between a and a0' provably has no key)"]
+    Between -.-> Warn
+
+    Note["Precision never exhausts:<br/>each halving costs +1 char,<br/>float64 would die in ~50 inserts"]
