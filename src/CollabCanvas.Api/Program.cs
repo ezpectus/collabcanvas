@@ -3,7 +3,11 @@ using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+// OpType travels as "Create"/"Patch"/... on the wire, not 0/1/2 —
+// the TS client matches string literals.
+builder.Services.AddSignalR().AddJsonProtocol(o =>
+    o.PayloadSerializerOptions.Converters.Add(
+        new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddSingleton<CollabCanvas.Core.Journal.IOpJournalFactory,
     CollabCanvas.Api.Journal.RedisOpJournalFactory>();
 builder.Services.AddSingleton<CollabCanvas.Core.Room.RoomManager>();

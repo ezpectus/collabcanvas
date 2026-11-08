@@ -33,3 +33,21 @@ export interface OpAck {
   accepted: boolean
   reason?: string
 }
+
+export interface PresenceUpdate {
+  docId: string
+  clientId: string
+  cursor: { x: number; y: number }
+  selection: string[]
+  color: string
+}
+
+export interface PresenceBroadcast {
+  clientId: string
+  update: PresenceUpdate
+}
+
+export interface PresenceLeft {
+  docId: string
+  clientId: string
+}
