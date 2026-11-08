@@ -4,9 +4,13 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+// Redis is journal-only (T-5) — the app must boot without it.
+// AbortOnConnectFail=false: the mux returns immediately and retries
+// in the background; /health reports "degraded" until it lands.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(ConfigurationOptions.Parse(
+        (builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379")
+        + ",abortConnect=false")));
 
 // Dev frontend on :5173 (vite) and :3100 (compose nginx) call the API
 // cross-origin — SignalR negotiate needs CORS for those origins.

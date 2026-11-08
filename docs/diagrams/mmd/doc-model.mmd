@@ -1,0 +1,18 @@
+%% CollabCanvas — модель документа и apply-семантика (T-3)
+%% Синк: src/CollabCanvas.Core/Model/Document.cs. Обновлять при смене
+%% правил LWW/существования.
+flowchart TD
+    op["OpBroadcast(seq, type, payload)"] --> dec{type?}
+
+    dec -->|Create| cs["createSeq[id] = max(..., seq)<br/>+ запись _kind/_z/props по seq"]
+    dec -->|Patch| wp["WriteProp(id, k, v, seq)<br/>каждое k из payload.props"]
+    dec -->|Reorder| wz["WriteProp(id, _z, v, seq)"]
+    dec -->|Delete| ds["deleteSeq[id] = max(..., seq)"]
+
+    cs & wp & wz --> reg["LWW-регистры:<br/>props[(id,prop)] = (value, seq)<br/>запись только если seq > текущий"]
+    reg -->|"seq <= текущий → no-op"| ign["игнор (идемпотентность)"]
+
+    reg --> read["Objects(): виден ⇔<br/>createSeq[id] > deleteSeq[id]<br/>сортировка (zKey, id)"]
+
+    note["Детерминизм: seq уникален (назначает сервер)<br/>→ полный порядок → конвергенция при любом порядке apply.<br/>Patch НЕ воскрешает удалённое — только новый Create."]
+    read --- note
