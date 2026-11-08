@@ -214,17 +214,31 @@ lastSeen — что было бы, дропай он оба? · sweeper vs disco
 
 ---
 
-## T-8 · Фронт: рендер · `todo` · M–L
+## T-8 · Фронт: рендер · `review` · M–L
 
-**Devin пишет:** model→Canvas отрисовка, viewport (pan/zoom),
-рендереры по типам объектов, батчинг кадра (requestAnimationFrame,
-dirty regions), 10k объектов @60fps как критерий.
+*Реализовано: `web/src/{model,session,renderer,fractionalIndex}.ts`
++ `App.tsx`. §19 + `mmd/client-render.mmd`. `JsonStringEnumConverter`
+в Api — OpType летает строкой. lint+build чисто, 31/31.*
 
-**Ревью-чеклист:** что перерисовывается на каждый op · где может
-быть утечка (listeners на window/document, canvas resize) ·
-React-стор vs draw-цикл — кто владеет циклом кадра.
+**Что написано:** `DocModel` — TS-зеркало LWW-документа
+(apply/restore/objects та же семантика, что у сервера);
+`Session` — join → snapshot/tail → live ops, reconnect → rejoin с
+lastSeq; `Renderer` — владелец canvas+rAF, рисует только по dirty,
+bbox-culling, pan/zoom с якорем курсора, dpr; per-kind draw для 6
+типов; remote cursors поверх; stats-overlay (objects/drawn/drawMs/
+fps) на ~10Гц. Кнопки: Join, Spawn rect (реальный op), Stress 10k
+(ghost-объекты вне журнала, не трогают lastSeq), Clear.
 
-**Gate:** почему 10k объектов не убивают кадр? Где лишний рендер?
+**Ревью-чеклист:** кто владеет циклом кадра и почему React только
+монтирует · найди все источники `markDirty` — что НЕ вызывает
+перерисовку? · `debugFill` обходит журнал — почему это безопасно
+для seq-контракта и где бы это сломалось · утечки: `stop()` — что
+снимается, что нет.
+
+**Gate:** почему 10k объектов не убивают кадр — назови три места,
+где работа сокращается? Где остаётся лишний рендер (`objects()`
+каждый кадр)? Клиент теряет WS на 5с с 200 пропущенными ops —
+проследи путь догона.
 
 ---
 

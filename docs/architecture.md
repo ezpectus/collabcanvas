@@ -466,3 +466,40 @@ mantissa; строка растёт ~1 символ на деление — 500 
 документами по одному сокету потеряет второй курсор (MVP: один
 документ на соединение); sweeper шлёт `presence-left` всем группам
 последовательно — при 1000 комнат тик затянется (T-10 territory).
+
+---
+
+## 19. Фронт: рендер (T-8, реализовано)
+
+Файлы: `web/src/{model,session,renderer,fractionalIndex}.ts`,
+`App.tsx`. Диаграмма: `docs/diagrams/mmd/client-render.mmd`.
+
+**Владение:** `Renderer` владеет canvas и rAF-циклом; React только
+монтирует его и читает stats (throttled до ~10 Гц — `onFrame` 60fps
+в `setState` был бы re-render storm). Кадр рисуется ТОЛЬКО при dirty:
+model change / resize / pan/zoom / presence → `markDirty`.
+
+**Клиентская модель — зеркало сервера:** те же LWW-регистры
+`(objId,prop)` + createSeq/deleteSeq, тот же `restore` со
+снапшота на snapshotSeq. Одна семантика = один код пути: серверный
+op, replay хвоста и (в T-9) оптимистичный apply идут через один
+`apply`. `FractionalIndex` портирован 1:1 — клиент считает z для
+новых объектов.
+
+**Производительность:** culling по bbox объекта против мирового
+видимого прямоугольника (скрытые объекты не доходят до draw);
+dpr-масштабирование; `Stress 10k` кнопка — `debugFill` с приватным
+`ghost-` namespace, НЕ трогает lastSeq (иначе rejoin врал бы
+серверу). Критерий 10k@60fps проверяется глазами по stats-overlay —
+автоматического perf-теста нет, честно.
+
+**Presence:** курсоры рисуются в мировых координатах поверх сцены;
+send throttled 50мс клиентом + 100мс серверным rate-limit.
+
+**Честные края:** текст рисуется без обёртки/измерения — выход за
+bbox при culling'е возможен (fontMetrics не учитываются);
+оптимистичного apply ещё нет — Spawn rect ждёт эха сервера (T-9);
+`objects()` пересортировывает всё каждый кадр — на 10k объектов это
+сама по себе работа ~мс, кандидат на кеширование по version-counter
+если профайл покажет; reconnect-шторм: `withAutomaticReconnect`
+дефолтный backoff, джиттера нет (T-10).

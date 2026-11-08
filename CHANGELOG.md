@@ -8,6 +8,22 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-8 фронт: рендер [D]
+
+- `web/src/model.ts` — DocModel: TS-зеркало LWW (regs/life, apply,
+  restore со snapshot, objects() сортировка (z,id)), `debugFill`
+  ghosts для стресса
+- `web/src/session.ts` — join/rejoin (lastSeq → tail/snapshot),
+  op/presence/presence-left/presence-state хендлеры, submit,
+  presence-throttle
+- `web/src/renderer.ts` — rAF по dirty, viewport pan/zoom с якорем,
+  bbox-culling, draw 6 типов, dpr, remote cursors, FrameStats EMA
+- `web/src/fractionalIndex.ts` — порт Between/First/After/Before
+- `App.tsx` — монтаж рендерера, join/spawn/stress UI, stats ~10Гц
+- `Api/Program.cs` — `JsonStringEnumConverter` (OpType строкой)
+- `docs/diagrams/mmd/client-render.mmd`, `architecture.md` §19,
+  tasks T-8 → `review`, PLAN +4
+
 ## 2026-11-08 — T-7 presence [D]
 
 - `Core/Presence/PresenceTracker.cs` — per-client замещение,

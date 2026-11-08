@@ -1,0 +1,23 @@
+%% T-8: client render path — who owns the frame, where work happens.
+%% Update when: render loop ownership, culling, or session flow changes.
+flowchart LR
+    subgraph Session["Session (SignalR wrapper)"]
+        H[HubConnection] -->|op / presence / snapshot| M[DocModel<br/>LWW mirror]
+        M -->|onChange| D[markDirty]
+        CS[Cursors map] -->|onPresence| D
+    end
+
+    subgraph Renderer["Renderer — owns canvas + rAF"]
+        D --> RAF{dirty?}
+        RAF -->|no| Skip[skip frame — zero work]
+        RAF -->|yes| Cull[bbox culling<br/>vs world view rect]
+        Cull --> Draw[per-kind draw<br/>rect/ellipse/line/text/path/image]
+        Draw --> Cur[cursor dots + labels]
+    end
+
+    subgraph React["React — mounts only"]
+        App[App.tsx] -->|mouse| VP[pan / zoomAt → markDirty]
+        App -->|reads| Stats[stats overlay @10Hz]
+    end
+
+    RAF -.->|onFrame throttled| Stats
