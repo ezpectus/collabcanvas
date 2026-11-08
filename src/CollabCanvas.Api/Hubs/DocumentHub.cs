@@ -1,28 +1,40 @@
 using CollabCanvas.Core.Protocol;
+using CollabCanvas.Core.Room;
 using Microsoft.AspNetCore.SignalR;
 
 namespace CollabCanvas.Api.Hubs;
 
 /// <summary>
-/// Document room endpoint. T-2 stub: join/leave group bookkeeping is
-/// real; ops are acked as not-implemented — an honest answer a client
-/// can render, instead of a silent drop or a fake success. T-4 wires
-/// the room + seq allocator, T-5 the journal, T-7 presence.
+/// Document room endpoint — thin SignalR adapter over <see cref="Room"/>.
+/// The room owns ALL ordering/dedup/apply (pure, unit-testable); the
+/// hub only moves messages: join → ops-since, submit → ack to author +
+/// broadcast to the group. Presence stays ephemeral fanout (T-7 adds
+/// TTL/throttle).
 /// </summary>
-public sealed class DocumentHub : Hub
+public sealed class DocumentHub(RoomManager rooms) : Hub
 {
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
+        var room = rooms.GetOrCreate(req.DocId);
         await Groups.AddToGroupAsync(Context.ConnectionId, req.DocId);
-        // No room state yet (T-4/T-5) — join answers "fresh doc, nothing to replay".
-        return new JoinResult(req.DocId, LastSeq: 0, Snapshot: null, SnapshotSeq: 0, Ops: []);
+        return room.Join(req.ClientId, req.LastSeq);
     }
 
     public Task LeaveDocument(string docId) =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, docId);
 
-    public Task<OpAck> SubmitOp(OpSubmit op) =>
-        Task.FromResult(new OpAck(op.ClientSeq, Seq: 0, Accepted: false, Reason: "ops-not-implemented-T4"));
+    public async Task<OpAck> SubmitOp(OpSubmit op)
+    {
+        var room = rooms.GetOrCreate(op.DocId);
+        var result = room.Submit(op);
+
+        // Broadcast to EVERYONE incl. author — the author reconciles
+        // its optimistic apply against the echoed seq (T-9).
+        await Clients.Group(op.DocId).SendAsync("op", result.Broadcast);
+
+        return new OpAck(op.ClientSeq, result.Broadcast.Seq,
+            Accepted: true, Reason: result.IsNew ? null : "duplicate");
+    }
 
     public Task Presence(PresenceUpdate update) =>
         Clients.OthersInGroup(update.DocId)

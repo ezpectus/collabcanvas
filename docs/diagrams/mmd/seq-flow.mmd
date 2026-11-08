@@ -1,0 +1,27 @@
+%% CollabCanvas — путь op'а через комнату (T-4)
+%% Синк: src/CollabCanvas.Core/Room/Room.cs + Api/Hubs/DocumentHub.cs.
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant H as DocumentHub
+    participant R as Room (lock)
+    participant D as Document
+    participant G as Group (SignalR)
+
+    C->>H: SubmitOp(clientId, clientSeq, type, payload)
+    H->>R: Submit(op)
+    rect rgb(40,40,60)
+        Note over R: lock — единственная точка упорядочивания
+        R->>R: dedup: (clientId,clientSeq) в _ackIndex?
+        alt повтор (WS-ретрай)
+            R-->>H: старый broadcast, IsNew=false
+        else новый
+            R->>D: Apply(seq = lastSeq+1)
+            R->>R: journal.Add + _ackIndex
+            R-->>H: broadcast, IsNew=true
+        end
+    end
+    H->>G: "op" → всем в комнате (вкл. автора)
+    H-->>C: OpAck(clientSeq, seq, accepted)
+
+    Note over C,G: Reconnect: join(lastSeq) → room.Join → ops seq>lastSeq.<br/>Журнал в памяти — рестарт = потеря (T-5 чинит).

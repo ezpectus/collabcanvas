@@ -4,6 +4,7 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<CollabCanvas.Core.Room.RoomManager>();
 // Redis is journal-only (T-5) — the app must boot without it.
 // AbortOnConnectFail=false: the mux returns immediately and retries
 // in the background; /health reports "degraded" until it lands.
