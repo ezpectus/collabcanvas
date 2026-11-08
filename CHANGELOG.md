@@ -8,6 +8,15 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-3 модель + apply [D]
+
+- `60f46cb` — `Core/Model/Document.cs` (LWW-регистры, createSeq
+  vs deleteSeq, order-agnostic apply), `DocumentApplyTests` (6 шт),
+  `Program.cs` abortConnect=false (тесты герметичны),
+  `docs/diagrams/mmd/doc-model.mmd`
+- `1b89c5f` — `architecture.md` §14, `tasks.md` T-3 → `review`,
+  `PLAN.md` +3 записи
+
 ## 2026-11-08 — T-2 скелет решения [D]
 
 - `eeb657b` — `CollabCanvas.sln`, `src/CollabCanvas.Core`
