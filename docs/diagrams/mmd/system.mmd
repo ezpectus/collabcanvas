@@ -1,0 +1,25 @@
+%% CollabCanvas — системный скелет (T-2)
+%% Синк: docker-compose.yml + src/ + web/. Обновлять при добавлении сервисов.
+flowchart LR
+    subgraph clients["Клиенты"]
+        A["Client A<br/>React + Canvas"]
+        B["Client B<br/>React + Canvas"]
+    end
+
+    subgraph compose["docker compose"]
+        web["web — nginx :3100<br/>статика + proxy /hubs /health"]
+        api["api — ASP.NET :8090(:8080)<br/>SignalR /hubs/document<br/>health"]
+        redis[("redis :6380(:6379)<br/>journal + snapshots<br/><i>T-5</i>")]
+    end
+
+    A -- "WS /hubs/document" --> web
+    B -- "WS /hubs/document" --> web
+    web -- "proxy (ws upgrade)" --> api
+    api -.->|"journal/snap (T-5)"| redis
+
+    subgraph apiIn["api внутри"]
+        hub["DocumentHub<br/>join/leave/submit/presence"]
+        room["Room(docId)<br/>seq + state + broadcast<br/><i>T-4</i>"]
+    end
+    api --- apiIn
+    hub -.-> room

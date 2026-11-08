@@ -1,0 +1,22 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #16161e; color: #c8ccd8; }
+
+.shell { display: flex; flex-direction: column; gap: 14px; padding: 16px; height: 100vh; }
+header { display: flex; align-items: center; gap: 12px; }
+h1 { font-size: 18px; margin: 0; }
+
+.pill { padding: 2px 10px; border-radius: 999px; font-size: 12px; background: #2a2a38; }
+.pill.joined { background: #1d4a2c; color: #7ce5a0; }
+.pill.connecting { background: #4a3d1d; color: #e5cf7c; }
+.pill.error { background: #4a1d1d; color: #e57c7c; }
+
+.panel { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+button { width: fit-content; padding: 8px 16px; border: 0; border-radius: 6px;
+         background: #3d5af1; color: #fff; cursor: pointer; font-size: 14px; }
+button:disabled { opacity: 0.5; cursor: default; }
+pre { background: #1e1e2a; padding: 10px; border-radius: 6px; font-size: 12px; overflow: auto; }
+pre.err { color: #e57c7c; }
+.hint { color: #777f96; font-size: 12px; margin: 0; }
+
+.board { flex: 1; width: 100%; background: #1e1e2a; border: 1px dashed #3a3f55;
+         border-radius: 8px; }
