@@ -593,6 +593,61 @@ RedisRoomTransport.cs`, `Api/Presence/OpRouter.cs`, хаб переписан.
 
 ---
 
+## 22. Харденинг (T-13, реализовано)
+
+Файлы: `Core/Protocol/OpValidator.cs`, `Core/Room/OpRateLimiter.cs`,
+хаб. Тесты: `HardeningTests` (12 шт).
+
+**Аудит показал три реальные дыры** (не теоретические):
+
+1. `SubmitOp` принимал любой payload → `Document.Apply` кинул бы
+   исключение под локом (id не строка) или журнал раздулся бы до
+   мегабайт на op. Фикс: `OpValidator` на транспорте до комнаты —
+   id/kind/z по whitelist'ам (z: base-62 + trailing-zero, потому что
+   «a0» — незаказуемый ключ), лимиты размера (64KB payload, 64
+   props, 4KB text, 4096 точек), docId/clientId по `^[0-9A-Za-z._-]`
+   (двоеточие раскололо бы Redis-key namespace).
+2. Ops не рейт-лимичены → бот минает журнал со скоростью сети.
+   Фикс: token bucket 120/с + burst 240 на connection (человеческий
+   драг ~12/с). Bucket умирает с коннектом — `Drop` на disconnect.
+3. `OpRouter.OnSubmit` доверял peer-хабам → rogue publisher
+   обходил валидацию. Фикс: повторная валидация на владельце
+   (defense in depth).
+
+**Остатки честные:** auth всё ещё нет (docId = открытый URL —
+rate-limit и валидация сдерживают мусор, не доступ); rate-limit
+per-connection — распределённый спам с N сокетов не ловится;
+валидация не проверяет СЕМАНТИКУ props (x:"banana" запишется —
+модель schema-less, примитивные типы не контрактуются).
+
+---
+
+## 23. Фронт: multi-select + rotate + duplicate (T-14, реализовано)
+
+Файлы: `editor.ts` (переписан на Set-выделение), `geometry.ts`
+(`rotatedBounds`), `renderer.ts` (rot в drawObject, quads, marquee,
+`fitBounds`).
+
+- **Multi-select:** marquee на пустом месте + Shift-click toggle;
+  move/delete/duplicate работают на множестве; `orig` — Map
+  id→props, дельты per-object.
+- **Rotate:** Shift + драг BR-хендла → `rot` в градусах, патч как
+  обычное свойство (LWW бесплатно). Рендер — rotate вокруг центра;
+  bounds/culling/hit — `rotatedBounds` (AABB повёрнутого quada,
+  щедрый, но верный).
+- **Duplicate** `Ctrl+D` (+20/+20, topmost z), **z-order** `[`/`]`
+  = один Reorder per object, **zoom-fit** `1` → fitBounds.
+- Path теперь двигается целиком (points+dx) — раньше move
+  freehand-объекта не умел.
+
+**Честные края:** resize остаётся BR-only и ломает пропорции при
+rot≠0 (дельта экранная, не в оси объекта); hit-test — AABB повёрнутого
+quad (клик в «воздушный» угол выделяет объект); rotate для
+line/path не поддержан (нет смысла без pivot-семантики); marquee
+игнорирует точную геометрию — пересечение bbox.
+
+---
+
 ## 22. Полировка (T-12, реализовано)
 
 Три края закрыты вне очереди.

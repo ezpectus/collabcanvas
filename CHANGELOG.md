@@ -8,6 +8,27 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-14 канва-фичи [D]
+
+- `web/src/editor.ts` — Set-выделение: marquee, Shift-click,
+  group move/delete/duplicate; Shift+BR → rotate (pivot=center);
+  `[`/`]` reorder, `Ctrl+D`, path двигается points+dx
+- `web/src/geometry.ts` — `rotatedBounds` (AABB повёрнутого quada)
+- `web/src/renderer.ts` — rot в drawObject, selection quads,
+  marquee-rect, `fitBounds` (zoom `1`)
+- `architecture.md` §23, `docs/roadmap.md` (новый, полный
+  функционал канвы), tasks T-14
+
+## 2026-11-08 — T-13 харденинг [D]
+
+- `Core/Protocol/OpValidator.cs` — id/kind/z whitelist + charset,
+  лимиты (64KB/64props/4KB text/4096pts)
+- `Core/Room/OpRateLimiter.cs` — token bucket 120/с+burst240,
+  Drop на disconnect
+- `DocumentHub` — validate+limit до Room; `OpRouter` — валидация
+  inbox-ops (defense in depth)
+- `HardeningTests` (12 шт), `architecture.md` §22, tasks T-13
+
 ## 2026-11-08 — T-12 полировка: path + presence + eviction [D]
 
 - `web/src/editor.ts` — инструмент `path`: локальный create/patch
