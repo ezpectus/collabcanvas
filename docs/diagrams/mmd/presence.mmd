@@ -1,0 +1,29 @@
+%% T-7: ephemeral presence — who kills a cursor and when.
+%% Update when: TTL, MinInterval, sweep interval, or left-announce paths change.
+sequenceDiagram
+    participant C as Client A
+    participant H as DocumentHub
+    participant T as PresenceTracker (room)
+    participant SW as PresenceSweeper (2s)
+    participant B as Client B
+
+    C->>H: Presence(update) — IS the heartbeat
+    H->>T: Update(client, update, now)
+    Note over T: lastSeen = now<br/>fanout? now-lastBroadcast >= 100ms
+    alt within MinInterval (spam)
+        T-->>H: false — stored, NOT fanned out
+    else
+        T-->>H: true
+        H-->>B: presence {client, update}
+    end
+
+    Note over SW,T: silent client (frozen tab, WS still open)
+    SW->>T: Expire(now) — every 2s
+    T-->>SW: [client] if idle > TTL(10s)
+    SW-->>B: presence-left {client}
+    Note over B: ghost lifetime <= TTL + sweep = ~12s
+
+    Note over H,T: dropped socket — fast path
+    H->>H: OnDisconnectedAsync
+    H->>T: UntrackConnection → Remove(client)
+    H-->>B: presence-left {client} — no TTL wait

@@ -8,6 +8,21 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-08 — T-7 presence [D]
+
+- `Core/Presence/PresenceTracker.cs` — per-client замещение,
+  TTL-истечение, rate-limit фанаута (now снаружи — тестируемо)
+- `Api/Presence/PresenceSweeper.cs` — hosted service, 2с тик,
+  `presence-left` в группы
+- `Room.Presence`, `RoomManager` — connection tracking
+  (disconnect → мгновенный уход курсора)
+- `DocumentHub` — presence через трекер, `presence-state` снэпшот
+  на join, `OnDisconnectedAsync`
+- `PresenceTests` (5 шт): замещение, rate-limit+TTL, expiry,
+  heartbeat-слайдинг, disconnect без TTL
+- `docs/diagrams/mmd/presence.mmd`, `architecture.md` §18,
+  tasks T-7 → `review`, PLAN +3
+
 ## 2026-11-08 — T-6 fractional indexing [D]
 
 - `Core/Model/FractionalIndex.cs` — `Between/First/After/Before`
