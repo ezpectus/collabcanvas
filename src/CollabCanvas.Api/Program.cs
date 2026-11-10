@@ -93,6 +93,7 @@ app.MapPost("/docs", async (
         .Replace('+', '-').Replace('/', '_'); // 12-char url-safe id
     await members.SetRoleAsync(id, who.Value.login,
         CollabCanvas.Api.Auth.RoomRole.Owner);
+    await members.ResurrectAsync(id); // id is random — dead-marker safety
     await redis.GetDatabase().SetAddAsync("docs", id);
     return Results.Ok(new { id, role = "owner" });
 });
@@ -336,6 +337,16 @@ app.MapDelete("/docs/{id}", async (
 {
     if (string.IsNullOrWhiteSpace(id) || id.Length > 64)
         return Results.BadRequest("bad id");
+    // ?hard=1 → irreversible destroy: owner only, everything goes.
+    // Plain delete stays a reversible delist (admin+).
+    if (req.Query["hard"] == "1")
+    {
+        if (await CallerRole(members, users, req, id) is not { } hc ||
+            hc != CollabCanvas.Api.Auth.RoomRole.Owner)
+            return Results.StatusCode(403);
+        await members.DestroyAsync(id);
+        return Results.NoContent();
+    }
     // Owned doc → owner/admin only; unowned stays open (reversible
     // delist is a low-cost op on a doc nobody claims).
     if (await members.IsOwnedAsync(id) &&
@@ -440,6 +451,9 @@ static async Task<CollabCanvas.Api.Auth.RoomRole?> CallerRole(
     CollabCanvas.Api.Auth.UserStore users,
     HttpRequest req, string docId, object? grant = null)
 {
+    // Dead doc denies everything — checked before membership so a
+    // destroyed doc can't resurrect via the legacy-open fallback.
+    if (await members.IsDeadAsync(docId)) return null;
     // Same precedence as the hub: member > link > legacy-open.
     // A viewer grant must never downgrade a member's real role.
     if (await users.ResolveAsync(Bearer(req)) is { } who &&

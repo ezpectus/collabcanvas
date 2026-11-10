@@ -316,6 +316,7 @@ export default function App() {
       await navigator.clipboard.writeText(
         `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}&grant=${encodeURIComponent(g)}`)
       setShareErr(`${r} link copied${ttlH ? ` (${ttlH}h)` : ''}`)
+      void loadLinks()
     } catch { setShareErr('link request failed') }
   }, [authedFetch, docId])
   const loadMembers = useCallback(async () => {
@@ -331,6 +332,34 @@ export default function App() {
       res.status === 400 ? 'no such login / bad role' : `add failed: ${res.status}`)
     if (res.ok) void loadMembers()
   }, [authedFetch, docId, loadMembers])
+  // Active bearer links — invisible ones can't be revoked, so the
+  // panel lists every live grant with copy + kill buttons.
+  const [linkList, setLinkList] = useState<Record<string, string> | null>(null)
+  const loadLinks = useCallback(async () => {
+    try {
+      const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/links`)
+      setLinkList(res.ok ? await res.json() as Record<string, string> : null)
+    } catch { setLinkList(null) }
+  }, [authedFetch, docId])
+  const revokeLink = useCallback(async (t: string) => {
+    const res = await authedFetch(
+      `/docs/${encodeURIComponent(docId)}/links/${encodeURIComponent(t)}`,
+      { method: 'DELETE' })
+    setShareErr(res.ok ? 'link revoked' : `revoke failed: ${res.status}`)
+    if (res.ok) void loadLinks()
+  }, [authedFetch, docId, loadLinks])
+  // Irreversible: wipes journal, meta, links, members AND blob bytes.
+  // Live sockets lose rights on their next op (tombstone → null role).
+  const destroyDoc = useCallback(async () => {
+    if (!confirm(`Destroy ${docId} forever? No undo.`)) return
+    const res = await authedFetch(
+      `/docs/${encodeURIComponent(docId)}?hard=1`, { method: 'DELETE' })
+    if (res.ok) {
+      const q = new URLSearchParams(location.search)
+      q.delete('doc'); q.delete('grant')
+      location.search = q.toString()
+    } else setShareErr(`destroy failed: ${res.status}`)
+  }, [authedFetch, docId])
   // T-27: doc name lives in doc:{id}:meta — rename is admin+.
   const [docName, setDocName] = useState<string | null>(null)
   const loadMeta = useCallback(async () => {
@@ -419,8 +448,9 @@ export default function App() {
 
   useEffect(() => () => { void sessionRef.current?.stop() }, [])
   useEffect(() => {
-    if (showShare && canManage) { void loadMembers(); void loadMeta() }
-  }, [showShare, canManage, loadMembers, loadMeta])
+    if (showShare && canManage)
+      { void loadMembers(); void loadMeta(); void loadLinks() }
+  }, [showShare, canManage, loadMembers, loadMeta, loadLinks])
 
   // Tool hotkeys + Delete.
   useEffect(() => {
@@ -791,6 +821,23 @@ export default function App() {
                 <span className="hist-type">{r}</span>
               </div>
             ))}
+            {linkList && Object.keys(linkList).length > 0 && <b>Links</b>}
+            {linkList && Object.entries(linkList).map(([t, r]) => (
+              <div className="hist-row" key={t}>
+                <span className="hist-who" title={t}>
+                  {r} · {t.slice(0, 8)}…</span>
+                <button className="tool" title="copy URL"
+                  onClick={() => void navigator.clipboard.writeText(
+                    `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}&grant=${encodeURIComponent(t)}`)}>cp</button>
+                <button className="tool" onClick={() => void revokeLink(t)}>
+                  kill</button>
+              </div>
+            ))}
+            {role === 'owner' && (
+              <button className="tool" style={{ color: '#e08080' }}
+                onClick={() => void destroyDoc()}>
+                destroy doc</button>
+            )}
           </aside>
         )}
         {/* Empty-doc onboarding hint — a blank canvas otherwise

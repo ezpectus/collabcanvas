@@ -55,6 +55,9 @@ public sealed class DocumentHub(
     private async Task<CollabCanvas.Api.Auth.RoomRole?> EffectiveRole(
         string docId, string? grant)
     {
+        // Tombstone first: a destroyed doc must not fall through to
+        // the legacy-open branch and resurrect for any joiner.
+        if (await members.IsDeadAsync(docId)) return null;
         // Re-resolve the bearer token per call — a logged-out or
         // expired session must not keep member rights on a live
         // socket (same no-cache policy as membership revocation;

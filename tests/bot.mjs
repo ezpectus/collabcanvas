@@ -483,6 +483,54 @@ const listAfter = await (await fetch(`${API}/docs`)).json()
 ok('unlist: doc gone from /docs (bot self-cleans)',
   !listAfter.includes(DOC))
 
+// --- hard delete: owner-only destroy strips every trace; tombstone
+// blocks the legacy-open resurrection path for members AND links.
+const u5 = `dd_${Date.now().toString(36)}`
+const reg5 = await (await authPost('register',
+  { login: u5, password: 'secretpw' })).json()
+const u6 = `dm_${Date.now().toString(36)}`
+const reg6 = await (await authPost('register',
+  { login: u6, password: 'secretpw' })).json()
+const OWN5 = (await (await authed('/docs', reg5.token,
+  { method: 'POST' })).json()).id
+await authed(`/docs/${OWN5}/members`, reg5.token,
+  { method: 'POST', body: JSON.stringify({ login: u6, role: 'editor' }) })
+const ddLink = (await (await authed(`/docs/${OWN5}/links`, reg5.token,
+  { method: 'POST', body: JSON.stringify({ role: 'viewer' }) })).json()).token
+const M = client(u6, reg6.token)
+await M.start()
+ok('destroy: member joined pre-delete',
+  (await M.join(0, OWN5)).role === 'editor')
+const DDG = client('g')
+await DDG.start()
+DDG.join = (lastSeq = 0, doc = OWN5, grant = ddLink) =>
+  DDG.conn.invoke('JoinDocument',
+    { docId: doc, clientId: 'bot-ddguest', lastSeq, grant })
+ok('destroy: link guest joined pre-delete',
+  (await DDG.join()).role === 'viewer')
+ok('destroy: non-owner hard delete denied',
+  (await authed(`/docs/${OWN5}?hard=1`, reg6.token,
+    { method: 'DELETE' })).status === 403)
+ok('destroy: plain delete still needs admin+',
+  (await authed(`/docs/${OWN5}`, reg6.token,
+    { method: 'DELETE' })).status === 403)
+ok('destroy: owner hard delete accepted',
+  (await authed(`/docs/${OWN5}?hard=1`, reg5.token,
+    { method: 'DELETE' })).status === 204)
+ok('destroy: member ops denied after delete',
+  (await M.submit('Create',
+    { id: 'dd1', kind: 'rect', z: 'a1', props: { x: 0, y: 0, w: 1, h: 1 } },
+    OWN5)).accepted === false)
+ok('destroy: member rejoin denied (tombstone)',
+  String(await M.join(1, OWN5).catch(e => e)).includes('forbidden'))
+ok('destroy: link guest denied after delete',
+  String(await DDG.join().catch(e => e)).includes('forbidden'))
+ok('destroy: doc gone from /docs',
+  !(await (await fetch(`${API}/docs`)).json()).includes(OWN5))
+ok('destroy: /ops denied on dead doc',
+  (await authed(`/ops?doc=${OWN5}`, reg5.token)).status === 403)
+await M.conn.stop(); await DDG.conn.stop()
+
 console.log(failures === 0
   ? `\n${tag}: ALL SCENARIOS PASSED`
   : `\n${tag}: ${failures} check(s) FAILED`)

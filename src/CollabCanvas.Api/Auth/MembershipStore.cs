@@ -125,6 +125,53 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
         return live;
     }
 
+    // ---- hard delete --------------------------------------------------
+    // Tombstone: without it a destroyed doc resurrects — ownership
+    // checks fall through to the "unowned = open" legacy branch and
+    // anyone re-joins as editor. The dead marker blocks that path and
+    // is cleared only if a new owner explicitly claims the same id.
+    private static string DeadKey(string docId) => $"doc:{docId}:dead";
+
+    public Task<bool> IsDeadAsync(string docId) =>
+        Db.KeyExistsAsync(DeadKey(docId));
+
+    /// <summary>Irreversible: strips members, links, meta, journal,
+    /// snapshot, blobs and listings, then leaves the tombstone.
+    /// Caller must have verified Owner — there is no undo.</summary>
+    public async Task DestroyAsync(string docId)
+    {
+        var db = Db;
+        var membersH = await db.HashGetAllAsync(MKey(docId));
+        var blobs = await db.SetMembersAsync($"doc:{docId}:blobs");
+        var batch = db.CreateBatch();
+        var t = new List<Task>();
+        foreach (var m in membersH)
+            t.Add(batch.SetRemoveAsync(DKey(m.Name!), docId));
+        foreach (var b in blobs)
+        {
+            t.Add(batch.KeyDeleteAsync($"blob:{b}"));
+            t.Add(batch.KeyDeleteAsync($"blob:{b}:meta"));
+        }
+        foreach (var k in new[]
+        {
+            MKey(docId), LKey(docId), $"doc:{docId}:meta",
+            $"doc:{docId}:blobs", $"doc:{docId}:ops",
+            $"doc:{docId}:snap", $"doc:{docId}:owner",
+        })
+            t.Add(batch.KeyDeleteAsync(k));
+        t.Add(batch.SetRemoveAsync("docs", docId));
+        t.Add(batch.SetRemoveAsync("owned:docs", docId));
+        t.Add(batch.StringSetAsync(DeadKey(docId), "1"));
+        batch.Execute();
+        await Task.WhenAll(t);
+    }
+
+    /// <summary>Re-claiming a dead id (fresh POST /docs by a new
+    /// owner) must lift the tombstone — the old doc is gone, the id
+    /// is just a name.</summary>
+    public Task ResurrectAsync(string docId) =>
+        Db.KeyDeleteAsync(DeadKey(docId));
+
     /// <summary>All owned doc ids — /docs guest filtering subtracts
     /// these from the discovery set.</summary>
     public async Task<HashSet<string>> OwnedDocIdsAsync()
