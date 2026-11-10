@@ -15,7 +15,9 @@
   changelog drift T-26..T-34 (b8788f8); roadmap sync (30c8e91)
 - T-36 rotate handle (bf4c60b + syntax-fix 1d79184 — первый коммит
   собирался сломанным, честно отмечено); alt-center resize (e6fb51c)
-- T-37 inspector panel x/y/w/h/rot (5374e42)
+- T-37 inspector panel x/y/w/h/rot (5374e42); inspector stale-input
+  + fontSize fix (975bb48); T-38 object locking (646de8e);
+  T-36/T-37 ticket+ledger docs (1600bf4)
 
 ## 2026-11-10 (tiếp) — T-23/24/25 [D]
 - T-23: G snap-to-grid, grid adaptive density, path dùng brush

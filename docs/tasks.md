@@ -623,7 +623,20 @@ Shift+BR сохранён для совместимости. Alt при resize �
 в handlePoints и собирался сломанным — починено `1d79184`.
 
 ## T-37 · Inspector · `review` · S
-Числовой ввод x/y/w/h/rot для single box-selection (панель снизу
-справа, коммит на blur/Enter). Через Editor.applyProps — undo-aware
-Patch на проводе, как драг. Line/path не показываются (нет x/y/w/h);
-multi-select — только счёт, полей нет.
+Числовой ввод x/y/w/h/rot (+fontSize у text) для single box-selection
+(панель снизу справа, коммит на blur/Enter). Через Editor.applyProps
+— undo-aware Patch на проводе, как драг. Line/path не показываются
+(нет x/y/w/h); multi-select — только счёт, полей нет. key=`id:k:v` —
+инпуты перемонтируются на remote-изменении (раньше показывали
+протухшие числа навсегда).
+
+## T-38 · Locking · `review` · S
+Ctrl+Shift+L — toggle lock (Figma: защита от случайных правок).
+Locked: click-through в hitTest (клик падает на объект ниже),
+marquee и Ctrl+A пропускают, хендлы не стартуют жест даже при
+выделении через layers, group-move не тащит locked-sibling.
+Unlock-путь — layers-панель (выделение по id минует hitTest) +
+тот же хоткей; строка с 🔒 и приглушена. Края: group lock пишет
+N undo-записей (по одной на объект — честно, но шумно); locked
+объект всё ещё удаляем/двигаем remote-опами — lock локальный UX-
+гейт, не permission.
