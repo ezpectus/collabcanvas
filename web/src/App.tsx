@@ -15,9 +15,10 @@ const TOOLS: Tool[] = ['select', 'rect', 'ellipse', 'line', 'text', 'path']
 // T-9: editing tools + optimistic apply. Pan lives on middle/right
 // drag or Space+drag — left drag belongs to the active tool.
 // T-15: DOM overlay for inline text editing. Positioned over the
-// object's screen rect; keystrokes apply LOCAL patches (remotes see
-// the result at commit — wire traffic stays at one Patch per edit).
-// Enter/blur commits, Shift+Enter newline, Escape reverts locally.
+// object's screen rect; keystrokes are LIVE Patches (co-typing —
+// remotes see typing as it happens; whole-string LWW resolves
+// same-field conflicts). Enter/blur commits the final value +
+// undo record, Shift+Enter newline, Escape reverts locally.
 function TextEditor({ id, orig, session: s, view, onClose }: {
   id: string
   orig: string
@@ -43,7 +44,10 @@ function TextEditor({ id, orig, session: s, view, onClose }: {
         fontSize: size * view.scale,
       }}
       onChange={(e) =>
-        s.applyLocal('Patch', { id, props: { text: e.currentTarget.value } })}
+        // Co-typing: every keystroke is a real Patch (optimistic
+        // local + wire in one call). Whole-string LWW — two typists
+        // on one field resolve by last-write, not per-char merge.
+        s.submit('Patch', { id, props: { text: e.currentTarget.value } })}
       onBlur={(e) => onClose(true, e.currentTarget.value)}
       onKeyDown={(e) => {
         e.stopPropagation()
@@ -251,7 +255,9 @@ export default function App() {
     if (commit && value !== undefined)
       editorRef.current?.commitText(st.id, value) // undo-tracked
     else if (!commit)
-      session().applyLocal('Patch', { id: st.id, props: { text: st.orig } })
+      // Keystrokes already went on the wire — an Escape-revert must
+      // travel the same path, not just repaint locally.
+      session().submit('Patch', { id: st.id, props: { text: st.orig } })
     editingRef.current = null
     setEditing(null)
     markDirty()
