@@ -43,6 +43,10 @@ export class Editor {
   /** T-22: current brush — new objects take it, applyColor repaints
    *  the selection. fill for closed shapes, stroke for line/path. */
   color = '#3d5af1'
+  /** T-23: snap-to-grid, toggled by G. Snaps the pointer, so create,
+   *  move and resize all align — the wire ops carry snapped values. */
+  snap = false
+  private grid(v: number): number { return this.snap ? Math.round(v / 10) * 10 : v }
   /** Text object asking for the inline editor (dblclick / click-place).
    *  The overlay lives in React-land — the editor only flags the id. */
   private wantEdit: string | null = null
@@ -174,6 +178,7 @@ export class Editor {
   }
 
   mouseDown(wx: number, wy: number, scale = 1, shift = false): void {
+    wx = this.grid(wx); wy = this.grid(wy)
     if (this.tool !== 'select') { this.createStart(wx, wy); return }
 
     const hp = this.handlePoints()
@@ -223,7 +228,7 @@ export class Editor {
     if (this.tool === 'path') {
       // Local-only while drawing — see T-12: the wire gets one Create.
       const z = this.topZ()
-      const props = { points: [{ x: wx, y: wy }], stroke: '#e8eaf2', lineWidth: 2 }
+      const props = { points: [{ x: wx, y: wy }], stroke: this.color, lineWidth: 2 }
       this.session.applyLocal('Create', { id, kind: 'path', z, props })
       this.selected.clear(); this.selected.add(id)
       this.drag = { mode: 'create', startX: wx, startY: wy,

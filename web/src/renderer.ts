@@ -19,6 +19,8 @@ export interface FrameStats {
 }
 
 export class Renderer {
+  /** T-23: grid visible while snap mode is on. */
+  showGrid = false
   readonly view: Viewport = { x: 80, y: 60, scale: 1 }
   private dirty = true
   private raf = 0
@@ -116,6 +118,24 @@ export class Renderer {
     const view: BBox = {
       x0: -v.x / v.scale - 8, y0: -v.y / v.scale - 8,
       x1: (w - v.x) / v.scale + 8, y1: (h - v.y) / v.scale + 8,
+    }
+
+    // T-23: grid — only while snapping is on; drawn under objects.
+    // Density adapts: below ~8 screen px per cell lines merge to noise,
+    // so the step doubles until it breathes.
+    if (this.showGrid) {
+      let step = 10
+      while (step * v.scale < 8) step *= 2
+      ctx.lineWidth = 1 / v.scale
+      ctx.strokeStyle = 'rgba(95,141,255,0.12)'
+      ctx.beginPath()
+      for (let x = Math.floor(view.x0 / step) * step; x <= view.x1; x += step) {
+        ctx.moveTo(x, view.y0); ctx.lineTo(x, view.y1)
+      }
+      for (let y = Math.floor(view.y0 / step) * step; y <= view.y1; y += step) {
+        ctx.moveTo(view.x0, y); ctx.lineTo(view.x1, y)
+      }
+      ctx.stroke()
     }
 
     // Quadtree culling: pay per drawn object, not per object in doc.

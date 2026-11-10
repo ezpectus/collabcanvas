@@ -192,6 +192,14 @@ export default function App() {
           rendererRef.current?.fitBounds(b)
         }
       }
+      if (e.key === 'g') { // T-23: grid + snap toggle
+        const ed = editor()
+        ed.snap = !ed.snap
+        if (rendererRef.current) {
+          rendererRef.current.showGrid = ed.snap
+          rendererRef.current.markDirty()
+        }
+      }
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
       editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey)
     }

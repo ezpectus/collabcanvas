@@ -555,3 +555,22 @@ Create — path перестал быть самым жирным op'ом. path.
 Реализовано: swatch в тулбаре = brush для новых + repaint выделения
 (stroke для line/path, fill иначе, undo-aware). PNG — canvas
 .toDataURL. Край: курсоры/хендлы попадают в снимок (frame artifacts).
+
+## T-23 · Snap-to-grid · `review` · XS
+Реализовано: G — toggle; snap к 10wu на mouseDown (движение через
+дельты от snapped-старта); сетка адаптивной плотности в renderer
+(step*2 пока <8px). Край: resize-delta не снаппит абсолют — якорь
+на сетке, тянуть можешь куда угодно.
+
+## T-24 · Version history из журнала · `todo` · M
+GET /ops?doc= → последние N ops (журнал уже помнит всё);
+клиент — панель истории, клик = просмотр состояния (replay локально
+до seq). Restore = compensating Patch (undo-механика уже есть).
+Край: journal MAXLEN — история глубже ~10k ops нет (снапшот-база).
+
+## T-25 · Minimap · `todo` · S
+Второй canvas, bounds всего документа, viewport-rect.
+
+## T-26 · Auth + share-права · `todo` · L (сознательно отложено)
+Сейчас docId=секрет; /docs перечисляет всё. Нужен юзер-учёт —
+до этого вся раздача прав театр.
