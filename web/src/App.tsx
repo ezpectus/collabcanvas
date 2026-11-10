@@ -431,9 +431,12 @@ export default function App() {
               <div key={o.id}
                 className={editor().selected.has(o.id)
                   ? 'hist-row sel' : 'hist-row'}
-                onClick={() => pickFromLayers(o.id)}>
+                onClick={() => pickFromLayers(o.id)}
+                style={o.props['locked']
+                  ? { opacity: .55 } : undefined}>
                 <span className="hist-type">{o.kind}</span>
                 <span className="hist-who">
+                  {o.props['locked'] ? '🔒 ' : ''}
                   {str(o.props, 'text') || o.id.slice(0, 8)}</span>
               </div>
             ))}
@@ -449,7 +452,7 @@ export default function App() {
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
               ['top handle / shift+BR', 'rotate'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],
-              ['ctrl+d', 'duplicate'],
+              ['ctrl+d', 'duplicate'], ['ctrl+shift+l', 'lock/unlock'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
               ['ctrl+a / esc', 'all / deselect'], ['g', 'grid+snap'],

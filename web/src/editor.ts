@@ -237,6 +237,9 @@ export class Editor {
     const hi = hp.findIndex(p => Math.abs(wx - p.x) <= tol && Math.abs(wy - p.y) <= tol)
     if (hi >= 0) {
       const o = this.find([...this.selected][0]!)!
+      // Locked object can still be *selected* via the layers panel —
+      // but its handles must not start a transform gesture.
+      if (o.props['locked']) return
       this.drag = {
         mode: this.selected.size >= 2
             ? (shift ? 'grotate' : 'gresize')
@@ -275,9 +278,12 @@ export class Editor {
                     orig: new Map(), center: null, moved: false, handle: -1 }
     } else if (hit) {
       if (!this.selected.has(hit.id)) { this.selected.clear(); this.selected.add(hit.id) }
+      // Locked ids can be in `selected` via the layers panel — they
+      // must not ride along a group move started on a sibling.
       this.drag = {
         mode: 'move', startX: wx, startY: wy,
         orig: new Map([...this.selected]
+          .filter((id) => !this.find(id)?.props['locked'])
           .map((id) => [id, { ...this.find(id)!.props }])),
         center: null, moved: false, handle: -1,
       }
@@ -500,6 +506,7 @@ export class Editor {
       this.marquee = null
       if (d.moved)
         for (const o of this.objects()) {
+          if (o.props['locked']) continue
           const b = boundsOf(o)
           if (b && !(b.x1 < m.x0 || b.x0 > m.x1 || b.y1 < m.y0 || b.y0 > m.y1))
             this.selected.add(o.id)
@@ -613,12 +620,28 @@ export class Editor {
       this.selected.clear(); this.redraw(); return
     }
     if (ctrl && (key === 'a' || key === 'A')) {
-      // Ctrl+A: every object — standard select-all. Undo-safe (no doc
-      // mutation, just selection state).
-      for (const o of this.objects()) this.selected.add(o.id)
+      // Ctrl+A: every unlocked object — standard select-all skips
+      // locked (Figma parity). Undo-safe (no doc mutation, just
+      // selection state).
+      for (const o of this.objects())
+        if (!o.props['locked']) this.selected.add(o.id)
       this.redraw(); return
     }
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
+    // T-38: Ctrl+Shift+L — Figma's lock toggle. Locked objects are
+    // click-through (hitTest skips them), can't be marquee/Ctrl+A'd,
+    // and their handles won't start gestures even when selected via
+    // the layers panel — which is also the unlock path.
+    if (ctrl && shift && (key === 'l' || key === 'L')) {
+      const ids = [...this.selected]
+      if (!ids.length) return
+      const allLocked = ids.every(
+        (id) => this.find(id)?.props['locked'])
+      for (const id of ids)
+        this.applyProps(id, { locked: allLocked ? null : true })
+      this.selected.clear() // newly locked objects are unselectable
+      this.redraw(); return
+    }
     if (key === ']') { this.stepReorder(1, ctrl); return }
     if (key === '[') { this.stepReorder(-1, ctrl); return }
     // T-31: font size was hardcoded at create — +/- nudges it on

@@ -111,6 +111,9 @@ export class SceneIndex {
     const hit = this.tree!.query(rect)
       .map((id) => this.byId.get(id)!)
       .filter((o) => {
+        // T-38: locked objects are click-through — the hit falls to
+        // the next candidate, so they can't be selected or dragged.
+        if (o.props['locked']) return false
         // T-29: open shapes hit by stroke proximity, not bounding box.
         if (o.kind === 'line' || o.kind === 'path')
           return hitsStroke(o, x, y, pad)
