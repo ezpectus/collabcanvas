@@ -574,9 +574,34 @@ Xong: `m` toggle, screen-space overlay trong main canvas — dot per
 object + viewport rect; docBounds cache theo model.version. Mặc
 định off (10k dots vẫn tốn ~2ms/frame).
 
-## T-26 · Auth + share-права · `todo` · L (сознательно отложено)
-Сейчас docId=секрет; /docs перечисляет всё. Нужен юзер-учёт —
-до этого вся раздача прав театр.
+## T-26 · Auth + share-права · `in-progress` · L
+Дизайн: `docs/design/auth-and-roles.md` (Canva-модель, threat-map).
+- **stage 1 `review`** (9d4f56d, fd6eaca): UserStore в Redis
+  (`user:{login}` + `sess:{token}` TTL 7d sliding, BCrypt wf11 —
+  НЕ самописная крипта), /auth/register|login|me|logout, uniform 401
+  (anti-enumeration). Токен на WS: `access_token` query ИЛИ Bearer-
+  header (браузер не умеет хедеры на WS-upgrade, Node-клиент умеет).
+  Presence-имя штампует сервер — self-claimed игнорируется (бот:
+  шлём name:'hacker', комната видит логин). Клиент: localStorage
+  cc_token, sign-in UI, курсоры с логинами.
+- **stage 2 `todo`**: membership `doc:{id}:member:{login}=role`
+  (owner/admin/editor/viewer) ВНЕ документ-props (иначе LWW-Patch =
+  самоповышение), guest-link grant'ы viewer/editor (owner/admin
+  только инвайтом), enforce на JoinDocument+SubmitOp+/docs+DELETE.
+- **stage 3 `todo`**: issue/revoke ссылок (token→role), revoke
+  гасит живой сокет (per-op перепроверка или versioned grant).
+- **stage 4 `todo`**: share-UI + viewer-mode (UI прячет кнопки,
+  но enforce всегда на сервере).
+- **Дыры стадии 1, честно** (задокументированы, чинятся на 2+):
+  /docs по-прежнему перечисляет всё · гость = полный редактор
+  (legacy, флип в stage 2) · logout убивает sess, но ОТКРЫТЫЙ
+  сокет держит resolved uid — живёт до дисконнекта (per-op check
+  нужен) · /auth/login без rate-limit (bcrypt 60-80мс тормозит,
+  но локаута нет) · токен в WS query попадает в access-логи
+  прокси — trade-off браузерного WebSocket, TLS+TTL 7d ·
+  password без max-длины (bcrypt молча режет >72B) · токен в
+  localStorage — читаем любым XSS (стандарт SPA, httpOnly-cookie
+  потребует CSRF-слоя — отдельное решение).
 
 ## T-27 · Line endpoints + arrow nudge · `review` · XS
 Vá lỗ hổng UX thật (không phải feature bịa): line vẽ xong không

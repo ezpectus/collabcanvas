@@ -263,3 +263,15 @@ Engine). Закрытые таски — `docs/done-log.md`.
   inspector/minimap overlap (e1803ee); T-41 layers drag-reorder
   (dffbe45, 17b6f4a); T-42 clipboard trio (98597ed, d92b7b1);
   status.md inventory (9c0505b); ledger (6668c65)
+
+## 2026-11-10 (auth stage 1) — T-26 начат
+
+- Дизайн auth+ролей: Canva-модель, threat-map, group-by-tag,
+  отложенное с триггерами (ef7d316)
+- T-26 stage 1: UserStore Redis + BCrypt, /auth/*, hub-токен
+  (query+header), серверное presence-имя; бот +7 auth-чеков
+  (9d4f56d); клиент: sign-in UI + token в join + stale-closure
+  fix (fd6eaca)
+- Записанные дыры stage 1: /docs открыт, гость=editor, logout
+  не рвёт живой сокет, /auth/login без throttle, query-токен
+  в логах прокси

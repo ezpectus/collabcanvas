@@ -100,3 +100,27 @@
 
 Каждый этап — коммит+тесты. Бот получит viewer-клиента и
 проверит, что его ops отброшены (тест на enforce, не на косметику).
+
+## Stage 1 — статус (закоммичено 9d4f56d + fd6eaca, в `review`)
+
+Реализовано: `user:{login}`+`sess:{token}` в Redis (TTL 7d sliding,
+revocable — JWT осознанно не взят: серверный токен отзывается
+DELETE'ом, self-signed JWT нет). BCrypt wf11 (~60-80мс/верификация).
+Эндпоинты register/login/me/logout, uniform 401 (нет enumeration).
+Токен в hub: `access_token` query ИЛИ Authorization-header — SignalR-
+браузер шлёт query (WS не умеет хедеры), Node-клиент шлёт header;
+берём оба, иначе теряем тестовый бот или браузер.
+Presence-имя = серверный логин (self-claimed перезаписывается —
+проверено ботом с name:'hacker' → комната видит login).
+
+Принятые отступления от дизайна выше:
+- cookie → Bearer-токен в localStorage: проще, но читаем XSS —
+  записано в дыры T-26; httpOnly-cookie потребует CSRF-слоя.
+- Гость остаётся editor ДО stage 2 (legacy-режим, осознанно —
+  иначе флип роли ломал бы все существующие тесты бота).
+
+Дыры, записанные для stage 2+ (не молчим): /docs открыт · logout
+не рвёт живой сокет (resolved uid кэширован в Context.Items —
+нужен per-op пересмотр или versioned session) · /auth/login без
+throttle · токен в WS query → access-логи прокси · пароль без
+max-длины (bcrypt режет >72B молча).
