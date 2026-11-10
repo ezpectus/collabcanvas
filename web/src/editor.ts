@@ -45,6 +45,9 @@ function quadOf(b: BBox, rotDeg: number): Quad {
 export class Editor {
   tool: Tool = 'select'
   readonly selected = new Set<string>()
+  /** Text object asking for the inline editor (dblclick / click-place).
+   *  The overlay lives in React-land — the editor only flags the id. */
+  private wantEdit: string | null = null
   private drag: Drag | null = null
   private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPatch = 0
@@ -72,6 +75,24 @@ export class Editor {
   }
 
   marqueeRect(): BBox | null { return this.marquee }
+
+  /** Consume a pending inline-edit request (dblclick on text, or a
+   *  click-placed new text). Returns null when nothing asked. */
+  takeEditRequest(): string | null {
+    const id = this.wantEdit
+    this.wantEdit = null
+    return id
+  }
+
+  /** dblclick: text objects open the inline editor, others just select. */
+  dblClick(wx: number, wy: number): void {
+    const hit = this.index.hitTest(this.session.model, wx, wy)
+    if (!hit) return
+    this.selected.clear()
+    this.selected.add(hit.id)
+    if (hit.kind === 'text') this.wantEdit = hit.id
+    this.redraw()
+  }
 
   private id(): string { return `o-${Math.random().toString(36).slice(2, 10)}` }
 
@@ -242,6 +263,12 @@ export class Editor {
 
     if (d.mode === 'create' && !d.moved) {
       for (const oid of d.orig.keys()) {
+        if (this.tool === 'text' && !d.localCreate) {
+          // Click-place: keep a default-size text and open the editor.
+          this.session.submit('Patch', { id: oid, props: { w: 120, h: 24 } })
+          this.wantEdit = oid
+          continue
+        }
         if (d.localCreate) this.session.applyLocal('Delete', { id: oid })
         else this.session.submit('Delete', { id: oid })
         this.selected.delete(oid)

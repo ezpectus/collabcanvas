@@ -54,19 +54,7 @@ public static partial class OpValidator
                 if (op.Payload.TryGetProperty("z", out var z)
                     && !ValidZ(z)) return "bad z";
                 if (op.Payload.TryGetProperty("props", out var cp))
-                {
-                    var err = ValidateProps(cp);
-                    if (err is not null) return err;
-                    if (k.GetString() == "path"
-                        && cp.TryGetProperty("points", out var pts)
-                        && pts.ValueKind == JsonValueKind.Array
-                        && pts.GetArrayLength() > MaxPoints)
-                        return "too many points";
-                    if (cp.TryGetProperty("text", out var t)
-                        && t.ValueKind == JsonValueKind.String
-                        && t.GetString()!.Length > MaxTextLen)
-                        return "text too long";
-                }
+                    return ValidateProps(cp);
                 return null;
             case OpType.Patch:
                 if (!op.Payload.TryGetProperty("props", out var pp)
@@ -96,6 +84,15 @@ public static partial class OpValidator
         {
             if (++n > MaxProps) return "too many props";
             if (p.Name.Length > MaxIdLen) return "prop name too long";
+            // Size caps live here so a Patch can't smuggle what a
+            // Create couldn't: long text and huge point arrays were
+            // previously checked only on the create path (bot catch).
+            if (p.NameEquals("text") && p.Value.ValueKind == JsonValueKind.String
+                && p.Value.GetString()!.Length > MaxTextLen)
+                return "text too long";
+            if (p.NameEquals("points") && p.Value.ValueKind == JsonValueKind.Array
+                && p.Value.GetArrayLength() > MaxPoints)
+                return "too many points";
         }
         return null;
     }

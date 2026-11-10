@@ -12,12 +12,58 @@ const TOOLS: Tool[] = ['select', 'rect', 'ellipse', 'line', 'text', 'path']
 
 // T-9: editing tools + optimistic apply. Pan lives on middle/right
 // drag or Space+drag — left drag belongs to the active tool.
+// T-15: DOM overlay for inline text editing. Positioned over the
+// object's screen rect; keystrokes apply LOCAL patches (remotes see
+// the result at commit — wire traffic stays at one Patch per edit).
+// Enter/blur commits, Shift+Enter newline, Escape reverts locally.
+function TextEditor({ id, orig, session: s, view, onClose }: {
+  id: string
+  orig: string
+  session: Session
+  view: { x: number; y: number; scale: number }
+  onClose: (commit: boolean, value?: string) => void
+}) {
+  const obj = s.model.objects().find((o) => o.id === id)
+  if (!obj) return null
+  const b = boundsOf(obj)
+  if (!b) return null
+  const size = typeof obj.props['fontSize'] === 'number'
+    ? obj.props['fontSize'] : 16
+  return (
+    <textarea
+      className="text-editor"
+      autoFocus
+      defaultValue={orig}
+      style={{
+        left: b.x0 * view.scale + view.x,
+        top: b.y0 * view.scale + view.y - size * view.scale * 0.8,
+        width: Math.max(80, (b.x1 - b.x0) * view.scale + 40),
+        fontSize: size * view.scale,
+      }}
+      onChange={(e) =>
+        s.applyLocal('Patch', { id, props: { text: e.currentTarget.value } })}
+      onBlur={(e) => onClose(true, e.currentTarget.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Escape') onClose(false)
+        else if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          onClose(true, e.currentTarget.value)
+        }
+      }}
+    />
+  )
+}
+
 export default function App() {
   const [state, setState] = useState<ConnState>('idle')
   const [stats, setStats] = useState<FrameStats | null>(null)
   const [lastSeq, setLastSeq] = useState(0)
   const [tool, setTool] = useState<Tool>('select')
   const [error, setError] = useState<string | null>(null)
+  // T-15: inline text editing — {id, orig} while the overlay is open.
+  const [editing, setEditing] = useState<{ id: string; orig: string } | null>(null)
+  const editingRef = useRef<{ id: string; orig: string } | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sessionRef = useRef<Session | null>(null)
@@ -53,6 +99,34 @@ export default function App() {
     setLastSeq(session().model.lastSeq)
   }, [])
 
+  /** Open the inline text overlay for an object id (T-15). */
+  const openEdit = useCallback((id: string) => {
+    const o = session().model.objects().find((x) => x.id === id)
+    if (!o || o.kind !== 'text') return
+    const orig = typeof o.props['text'] === 'string' ? o.props['text'] : ''
+    const st = { id, orig }
+    editingRef.current = st
+    setEditing(st)
+  }, [])
+
+  const closeEdit = useCallback((commit: boolean, value?: string) => {
+    const st = editingRef.current
+    if (!st) return
+    if (commit && value !== undefined)
+      session().submit('Patch', { id: st.id, props: { text: value } })
+    else if (!commit)
+      session().applyLocal('Patch', { id: st.id, props: { text: st.orig } })
+    editingRef.current = null
+    setEditing(null)
+    markDirty()
+  }, [markDirty])
+
+  /** After a gesture: the editor may have requested an edit overlay. */
+  const drainEditRequest = useCallback(() => {
+    const id = editorRef.current?.takeEditRequest()
+    if (id) openEdit(id)
+  }, [openEdit])
+
   const editor = useCallback((): Editor =>
     (editorRef.current ??= new Editor(session(), indexRef.current, markDirty)),
   [markDirty])
@@ -78,6 +152,7 @@ export default function App() {
   // Tool hotkeys + Delete.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (editingRef.current) return // typing belongs to the overlay
       if (e.key === ' ') { spaceDown.current = true; return }
       const map: Record<string, Tool> = {
         v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text', p: 'path',
@@ -160,8 +235,17 @@ export default function App() {
                 e.shiftKey)
             }
           }}
-          onMouseUp={() => { panDrag.current = null; editor().mouseUp() }}
+          onMouseUp={() => {
+            panDrag.current = null
+            editor().mouseUp()
+            drainEditRequest()
+          }}
           onMouseLeave={() => { panDrag.current = null; editor().mouseUp() }}
+          onDoubleClick={(e) => {
+            const w = world(e)
+            editor().dblClick(w.x, w.y)
+            drainEditRequest()
+          }}
           onMouseMove={(e) => {
             const r = rendererRef.current
             if (!r) return
@@ -182,6 +266,9 @@ export default function App() {
               Math.exp(-e.deltaY * 0.001))
           }}
         />
+        {editing && <TextEditor id={editing.id} orig={editing.orig}
+          session={session()} view={rendererRef.current!.view}
+          onClose={closeEdit} />}
       </div>
     </div>
   )

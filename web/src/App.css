@@ -27,3 +27,8 @@ button.tool.active { background: #3d5af1; }
               overflow: hidden; position: relative; }
 .board { display: block; background: #1e1e2a; cursor: grab; touch-action: none; }
 .board:active { cursor: grabbing; }
+
+.text-editor { position: absolute; min-height: 1.4em; border: 1px solid #5f8dff;
+               border-radius: 4px; background: #16161ecc; color: #e8eaf2;
+               font-family: sans-serif; padding: 2px 4px; resize: none;
+               overflow: hidden; outline: none; z-index: 10; }
