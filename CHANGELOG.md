@@ -251,3 +251,10 @@ Engine). Закрытые таски — `docs/done-log.md`.
   карта отказов, честные риски, gate-вопросы §13 [docs]
 - `53f6bda` — скелет проекта: AGENTS.md (перевёрнутые роли),
   tasks.md (11 тикетов), review_checklists, PLAN с 5 решениями [docs]
+- T-38 lock-gates complete (ee97025, 0ddee47); shift-rotate 15° snap +
+  inspector disabled/locked (fb01f4f); line endpoints in inspector
+  (8bcd828)
+- T-39 opacity (98d4b60, 5276472); lineWidth/radius/dash/align/box-
+  stroke/hollow props wired end-to-end (addbafe, 09a2fc1, 57d9ac8,
+  b1624da, 20726d3, 6d081b2); lineWidth leak fix (8894b29);
+  PLAN/roadmap/checklist syncs (8c72e7d, 3823b1d, 660acdb)
