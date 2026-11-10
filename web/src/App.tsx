@@ -473,7 +473,10 @@ export default function App() {
         {showLayers && state === 'joined' && (
           <aside className="history-panel layers-panel">
             <b>Layers · top first</b>
-            {[...session().model.objects()].reverse().map((o) => (
+            {/* 10k stress objects would freeze the tab — same culling
+                philosophy as the renderer: cap the list, show the rest
+                as a count. */}
+            {[...session().model.objects()].reverse().slice(0, 200).map((o) => (
               <div key={o.id}
                 className={editor().selected.has(o.id)
                   ? 'hist-row sel' : 'hist-row'}
@@ -486,6 +489,13 @@ export default function App() {
                   {str(o.props, 'text') || o.id.slice(0, 8)}</span>
               </div>
             ))}
+            {session().model.objects().length > 200 && (
+              <div className="hist-row">
+                <span className="hist-type">…</span>
+                <span className="hist-who">
+                  {session().model.objects().length - 200} more</span>
+              </div>
+            )}
           </aside>
         )}
         {state === 'joined' && <Inspector editor={editor()}
