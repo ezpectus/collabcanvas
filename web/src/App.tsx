@@ -234,7 +234,7 @@ export default function App() {
       }
       if (e.key === '?') setShowHelp((h) => !h) // undiscoverable otherwise
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
-      editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey)
+      editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.altKey)
     }
     const up = (e: KeyboardEvent) => { if (e.key === ' ') spaceDown.current = false }
     window.addEventListener('keydown', down)
@@ -397,7 +397,7 @@ export default function App() {
               ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
-              ['shift+BR drag', 'rotate'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'],
+              ['shift+BR drag', 'rotate'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'],
               ['ctrl+d', 'duplicate'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],

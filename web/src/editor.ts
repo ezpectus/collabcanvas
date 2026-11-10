@@ -446,7 +446,7 @@ export class Editor {
   }
 
   /** Keys that mutate the document or selection. */
-  key(key: string, ctrl = false, shift = false): void {
+  key(key: string, ctrl = false, shift = false, alt = false): void {
     if (ctrl && (key === 'z' || (key === 'Z' && !shift))) { this.undo(); return }
     if (ctrl && (key === 'y' || (key === 'Z' && shift))) { this.redo(); return }
     if (key === 'Delete' || key === 'Backspace') {
@@ -513,6 +513,55 @@ export class Editor {
     // one undo entry covering the whole selection.
     const arrow: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    }
+    // T-33: align — Alt+arrows snap selection edges to the extreme
+    // edge; Alt+h/Alt+v center horizontally/vertically. Box kinds
+    // only: line/path have no x/y anchor to align (honest edge).
+    // Alignment is by AABB — for rot≠0 the quad's box aligns, which
+    // is what a user expects visually.
+    if (alt && this.selected.size >= 2) {
+      const alignAxis: Record<string, 'x' | 'y'> =
+        { ArrowLeft: 'x', ArrowRight: 'x', ArrowUp: 'y', ArrowDown: 'y' }
+      const axis = alignAxis[key] ?? (key === 'h' ? 'x' : key === 'v' ? 'y' : null)
+      if (axis) {
+        const boxes = new Map<string, BBox>()
+        for (const oid of this.selected) {
+          const o = this.find(oid)
+          const b = o && boundsOf(o)
+          if (o && b && (o.props['x'] !== undefined)) boxes.set(oid, b)
+        }
+        if (boxes.size >= 2) {
+          const edge = key === 'ArrowRight' || key === 'ArrowDown'
+          const center = key === 'h' || key === 'v'
+          let target: number
+          if (center) {
+            const mids = [...boxes.values()].map((b) =>
+              axis === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2)
+            target = (Math.min(...mids) + Math.max(...mids)) / 2
+          } else {
+            target = edge
+              ? Math.max(...[...boxes.values()].map((b) => axis === 'x' ? b.x1 : b.y1))
+              : Math.min(...[...boxes.values()].map((b) => axis === 'x' ? b.x0 : b.y0))
+          }
+          const inv: WireOp[] = [], fwd: WireOp[] = []
+          for (const [oid, b] of boxes) {
+            const cur = center
+              ? (axis === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2)
+              : edge ? (axis === 'x' ? b.x1 : b.y1) : (axis === 'x' ? b.x0 : b.y0)
+            const delta = target - cur
+            if (delta === 0) continue
+            const o = this.find(oid)!
+            const k = axis === 'x' ? 'x' : 'y'
+            const props = { [k]: num(o.props, k) + delta }
+            inv.push({ type: 'Patch', payload: { id: oid, props: { ...o.props } } })
+            fwd.push({ type: 'Patch', payload: { id: oid, props } })
+            this.session.submit('Patch', { id: oid, props })
+          }
+          if (fwd.length) this.recordUndo(inv, fwd)
+          this.redraw()
+        }
+        return
+      }
     }
     const a = arrow[key]
     if (a && this.selected.size) {
