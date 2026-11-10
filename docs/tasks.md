@@ -614,3 +614,16 @@ union-bbox; boxes копят свой rot, line/path — point-wise спин
 (rot-пропа у них нет). Одна undo-запись на жест. Край: box спин
 идёт по AABB-центру (=центру quad'а — верно); text-поворот
 копит rot, но glyphs не растягиваются — поведение честное.
+
+## T-36 · Rotate handle + Alt-resize · `review` · S
+9-я точка над верхней гранью = rotate без Shift (single и group),
+Shift+BR сохранён для совместимости. Alt при resize теперь реально
+масштабирует от центра (computeResize `center` — хинт в `?` раньше
+врал: alt не был подключён). История: первый коммит T-36 уронил `}`
+в handlePoints и собирался сломанным — починено `1d79184`.
+
+## T-37 · Inspector · `review` · S
+Числовой ввод x/y/w/h/rot для single box-selection (панель снизу
+справа, коммит на blur/Enter). Через Editor.applyProps — undo-aware
+Patch на проводе, как драг. Line/path не показываются (нет x/y/w/h);
+multi-select — только счёт, полей нет.

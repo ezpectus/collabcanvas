@@ -11,6 +11,11 @@
 - T-33 align+distribute (d8511bf, 1ba0c3c)
 - bot покрывает /ops + DELETE, сам делистит doc (9f2fe32)
 - T-34 group resize union-box (fec4b74); shift+1 zoom-selection (6eb452b)
+- T-35 group rotate shift+BR (3b6b0e3); tasks T-33 fix (dce3433);
+  changelog drift T-26..T-34 (b8788f8); roadmap sync (30c8e91)
+- T-36 rotate handle (bf4c60b + syntax-fix 1d79184 — первый коммит
+  собирался сломанным, честно отмечено); alt-center resize (e6fb51c)
+- T-37 inspector panel x/y/w/h/rot (5374e42)
 
 ## 2026-11-10 (tiếp) — T-23/24/25 [D]
 - T-23: G snap-to-grid, grid adaptive density, path dùng brush
