@@ -45,9 +45,9 @@
 |---|---|---|
 | T-26 Auth + share-права | L | Все 4 этапа в review: users/sessions, роли (owner/admin/editor/viewer), link-grant'ы guest viewer/editor, share-UI + viewer-mode, бот +34 auth-чеков. Остаточные дыры — в T-26 (throttle логина, rename, per-op Redis-стоимость) |
 | Image upload | L | `image` kind есть со стабом. Нужен blob store (props-лимит 64KB) + upload-эндпоинт — инфра-решение |
-| Группировка объектов | L | Parent-child схема в модели; сейчас multi-select — временная группа. Дизайн: группа как объект или тег? |
+| Группировка объектов | — | ✅ T-35 в review: flat tag-модель (выбор юзера), ctrl+g/ungroup, клик-селект по тегу. Вложенность/вход в группу — вне скоупа по дизайну |
 | Co-typing текста | XL | Операционный уровень вместо whole-string LWW. Сознательно отложено — дорого |
-| Doc-rename/metadata | M | Нужен PATCH /docs/{id} + метаданные документа (сейчас docs = stream-ключи, имени нет) |
+| Doc-rename/metadata | — | ✅ T-27 в review: `doc:{id}:meta` + PATCH owner/admin |
 | Mobile/touch | L | Pointer-events слой, жесты pinch/long-press. Desktop-first пока осознанно |
 | Scale-hardening | M-L | Ownership fencing, join-cache, инкрементальный индекс — преждевременно без реальной нагрузки |
 | Комментарии | ? | Сомнительно на этом этапе — сначала auth |

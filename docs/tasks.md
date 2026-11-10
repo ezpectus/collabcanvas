@@ -631,6 +631,17 @@ Panel z-sorted (top đầu), click row → select + zoom tới.
 Kraï: list là snapshot lúc render — không subscribe model, op mới
 đến khi panel mở sẽ không tự refresh (mở lại là đủ).
 
+## T-35 · Group tags · `review` · S
+Flat `group`-prop (модель из дизайна auth-дока, юзер выбрал «по
+тегам» — дерева нет и не будет). Ctrl+G тегает mutable-выделение
+общим `g-xxx`, Ctrl+Shift+G снимает. Клик/shift-клик на объекте с
+тегом расширяет выделение на весь тег (unit-toggle). Undo-aware,
+null-проп = снятие. Края честно: marquee/ctrl+A селектят плоско
+(группу целиком не добирают), вход внутрь группы и вложенность —
+вне скоупа по дизайну; locked не тегаются, но lock-член уже в
+теге остаётся сгруппированным по выделению (в жест не едет —
+orig-фильтр).
+
 ## T-32 · Doc delisting · `review` · XS
 DELETE /docs/{id} removes id from the discovery Set only —
 journal/snapshot untouched, re-join re-adds (reversible, no destroy
