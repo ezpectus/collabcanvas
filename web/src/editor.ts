@@ -7,7 +7,7 @@
 // throttled 80ms, final flush on mouseup. Deltas apply to props as of
 // mouseDown — no float drift, no mid-drag hijack by foreign patches.
 
-import { boundsOf, num, type BBox } from './geometry'
+import { boundsOf, computeResize, num, type BBox } from './geometry'
 import type { CanvasObject } from './model'
 import { FractionalIndex } from './fractionalIndex'
 import { SceneIndex } from './quadtree'
@@ -32,11 +32,6 @@ interface Drag {
 }
 
 const rad = (deg: number) => (deg * Math.PI) / 180
-
-/** Handle directions [sx,sy]: TL,T,TR,R,BR,B,BL,L — sx/sy say which
- *  local axis a drag grows (1) or shrinks (-1) on. T-16. */
-const HANDLE_DIRS: [number, number][] = [
-  [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
 
 /** AABB → rotated quad corners around its center (rot degrees). */
 function quadOf(b: BBox, rotDeg: number): Quad {
@@ -232,33 +227,8 @@ export class Editor {
             : undefined,
         })
       } else if (d.mode === 'resize') {
-        // T-16: delta in the OBJECT's axes (rotate world delta by -rot)
-        // — a rotated rect resizes along its own edges, not screen axes.
-        const rot = rad(num(orig, 'rot'))
-        const c0 = Math.cos(-rot), s0 = Math.sin(-rot)
-        const dxl = dx * c0 - dy * s0
-        const dyl = dx * s0 + dy * c0
-        const [sx, sy] = HANDLE_DIRS[d.handle] ?? [1, 1]
-        const w0 = num(orig, 'w', 1), h0 = num(orig, 'h', 1)
-        let w2 = Math.max(2, w0 + sx * dxl)
-        let h2 = Math.max(2, h0 + sy * dyl)
-        if (aspect && (sx !== 0 || sy !== 0)) { // Shift = keep ratio
-          const ratio = w0 / h0
-          if (sy === 0 || Math.abs(w2 / w0 - 1) >= Math.abs(h2 / h0 - 1)) h2 = w2 / ratio
-          else w2 = h2 * ratio
-        }
-        // Anchor the OPPOSITE side/corner: its local offset scales with
-        // w/h, so shift the center by the rotated difference — the
-        // anchor point stays pixel-fixed in world space.
-        const dax = (-sx) * (w0 - w2) / 2
-        const day = (-sy) * (h0 - h2) / 2
-        const cr = Math.cos(rot), sr = Math.sin(rot)
-        const cx0 = num(orig, 'x') + w0 / 2, cy0 = num(orig, 'y') + h0 / 2
-        this.patchThrottled(oid, {
-          x: cx0 + dax * cr - day * sr - w2 / 2,
-          y: cy0 + dax * sr + day * cr - h2 / 2,
-          w: w2, h: h2,
-        })
+        this.patchThrottled(oid,
+          computeResize(orig, d.handle, dx, dy, aspect))
       } else if (d.mode === 'create') {
         if (d.localCreate) {
           const pts = orig['points'] as { x: number; y: number }[]

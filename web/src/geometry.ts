@@ -60,6 +60,43 @@ export function rotatedBounds(b: BBox, rotDeg: number): BBox {
   return out
 }
 
+/** T-16: resize math, pure and testable. World delta (dx,dy) → new
+ * box props. The grabbed handle's direction [sx,sy] grows/shrinks
+ * each local axis; the OPPOSITE edge stays pixel-fixed in world. */
+export function computeResize(
+  props: Record<string, unknown>,
+  handle: number, // index into [TL,T,TR,R,BR,B,BL,L] — [sx,sy] pairs
+  dx: number, dy: number, // world-space drag delta
+  aspect = false,
+): { x: number; y: number; w: number; h: number } {
+  const DIRS: [number, number][] = [
+    [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
+  const rot = (num(props, 'rot') * Math.PI) / 180
+  const c0 = Math.cos(-rot), s0 = Math.sin(-rot)
+  const dxl = dx * c0 - dy * s0 // world delta → object's local axes
+  const dyl = dx * s0 + dy * c0
+  const [sx, sy] = DIRS[handle] ?? [1, 1]
+  const w0 = num(props, 'w', 1), h0 = num(props, 'h', 1)
+  let w2 = Math.max(2, w0 + sx * dxl)
+  let h2 = Math.max(2, h0 + sy * dyl)
+  if (aspect && (sx !== 0 || sy !== 0)) {
+    const ratio = w0 / h0
+    if (sy === 0 || Math.abs(w2 / w0 - 1) >= Math.abs(h2 / h0 - 1)) h2 = w2 / ratio
+    else w2 = h2 * ratio
+  }
+  // Anchor shift: the opposite edge's center-offset scales with w/h;
+  // move the center by the rotated difference so it stays fixed.
+  const dax = (-sx) * (w0 - w2) / 2
+  const day = (-sy) * (h0 - h2) / 2
+  const cr = Math.cos(rot), sr = Math.sin(rot)
+  const cx0 = num(props, 'x') + w0 / 2, cy0 = num(props, 'y') + h0 / 2
+  return {
+    x: cx0 + dax * cr - day * sr - w2 / 2,
+    y: cy0 + dax * sr + day * cr - h2 / 2,
+    w: w2, h: h2,
+  }
+}
+
 export const intersects = (a: BBox, b: BBox): boolean =>
   !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1)
 
