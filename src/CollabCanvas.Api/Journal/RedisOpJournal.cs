@@ -62,7 +62,41 @@ public sealed class RedisOpJournal(IConnectionMultiplexer mux, string docId) : I
     });
 
     public void WriteSnapshot(long seq, string json) => Try(() =>
-        Db.StringSet(SnapKey, JsonSerializer.Serialize(new { seq, json })));
+    {
+        Db.StringSet(SnapKey, JsonSerializer.Serialize(new { seq, json }));
+        SweepBlobs(json);
+    });
+
+    /// Blob GC piggybacked on snapshot writes: the snapshot IS the doc
+    /// truth, so a blob no object references is bytes nobody can draw.
+    /// The grace window covers the upload → Create-op gap — a blob
+    /// younger than <see cref="BlobGraceSeconds"/> is spared even when
+    /// unreferenced (its Create may still be in flight).
+    public const int BlobGraceSeconds = 120;
+    private void SweepBlobs(string snapshotJson)
+    {
+        var referenced = new HashSet<string>();
+        foreach (var o in JsonDocument.Parse(snapshotJson).RootElement
+            .EnumerateArray())
+            if (o.TryGetProperty("Props", out var p) &&
+                p.TryGetProperty("src", out var s) &&
+                s.ValueKind == JsonValueKind.String)
+                referenced.Add(s.GetString()!);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var db = Db;
+        foreach (var b in db.SetMembers($"doc:{docId}:blobs"))
+        {
+            var id = b.ToString();
+            if (referenced.Contains(id)) continue;
+            var ts = db.HashGet($"blob:{id}:meta", "ts");
+            // No ts = pre-grace blob — treated as old enough to collect.
+            if (long.TryParse(ts.ToString(), out var t) &&
+                now - t < BlobGraceSeconds) continue;
+            db.KeyDelete($"blob:{id}");
+            db.KeyDelete($"blob:{id}:meta");
+            db.SetRemove($"doc:{docId}:blobs", id);
+        }
+    }
 
     private OpBroadcast[] ReadAll() => Try(() =>
         Db.StreamRange(OpsKey).Select(e =>

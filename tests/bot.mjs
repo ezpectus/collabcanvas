@@ -642,6 +642,49 @@ ok('comments: guest REST denied',
 await CM.conn.stop(); await CV.conn.stop()
 await CX.conn.stop(); await cDel.conn.stop()
 
+// --- blob GC: the snapshot sweeper collects orphan blobs past the
+// grace window; referenced and freshly-uploaded ones survive.
+const GCD = `gc-${Date.now().toString(36)}`
+const GC1 = client('gc1', reg10.token)
+await GC1.start()
+await GC1.join(0, GCD)
+const pngGc = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+const liveUp = await fetch(`${API}/docs/${GCD}/blobs`, { method: 'POST',
+  headers: { 'Content-Type': 'image/png',
+    Authorization: `Bearer ${reg10.token}` }, body: pngGc })
+const liveBlob = liveUp.ok ? (await liveUp.json()).id : null
+ok('gc: referenced blob uploaded', !!liveBlob)
+await GC1.submit('Create', { id: 'gcimg', kind: 'image', z: 'a1',
+  props: { x: 0, y: 0, w: 1, h: 1, src: liveBlob } }, GCD)
+try {
+  const { execSync } = await import('node:child_process')
+  const rcli = (cmd) =>
+    execSync(`docker exec collabcanvas-redis-1 redis-cli ${cmd}`)
+  rcli(`set blob:gcdead x`)
+  rcli(`hset blob:gcdead:meta doc ${GCD} type image/png ts 1`)
+  rcli(`sadd doc:${GCD}:blobs gcdead`)
+  rcli(`set blob:gcfresh x`)
+  rcli(`hset blob:gcfresh:meta doc ${GCD} type image/png ts ` +
+    `${Math.floor(Date.now() / 1000)}`)
+  rcli(`sadd doc:${GCD}:blobs gcfresh`)
+  // 100 ops since room start → snapshot → sweep fires inside it.
+  for (let i = 0; i < 100; i++)
+    await GC1.submit('Patch', { id: 'gcimg', props: { x: i } }, GCD)
+  const deadGet = await fetch(`${API}/blobs/gcdead?grant=`,
+    { headers: { Authorization: `Bearer ${reg10.token}` } })
+  ok('gc: ancient orphan collected by sweep', deadGet.status === 404,
+    `s=${deadGet.status}`)
+  const freshGet = await fetch(`${API}/blobs/gcfresh`,
+    { headers: { Authorization: `Bearer ${reg10.token}` } })
+  ok('gc: fresh orphan survives (grace window)', freshGet.status === 200,
+    `s=${freshGet.status}`)
+  const liveGet = await fetch(`${API}/blobs/${liveBlob}`,
+    { headers: { Authorization: `Bearer ${reg10.token}` } })
+  ok('gc: referenced blob survives', liveGet.status === 200,
+    `s=${liveGet.status}`)
+} catch (e) { ok('gc: sweep scenario ran', false, String(e).slice(0, 80)) }
+await GC1.conn.stop()
+
 console.log(failures === 0
   ? `\n${tag}: ALL SCENARIOS PASSED`
   : `\n${tag}: ${failures} check(s) FAILED`)
