@@ -12,6 +12,7 @@ import type { CanvasObject } from './model'
 import { FractionalIndex } from './fractionalIndex'
 import { SceneIndex } from './quadtree'
 import type { Session } from './session'
+import type { OpType } from './protocol'
 
 export type Tool = 'select' | 'rect' | 'ellipse' | 'line' | 'text' | 'path'
 
@@ -32,6 +33,9 @@ interface Drag {
 }
 
 
+/** One document op for the undo log (T-17). */
+type WireOp = { type: OpType; payload: Record<string, unknown> }
+
 export class Editor {
   tool: Tool = 'select'
   readonly selected = new Set<string>()
@@ -41,6 +45,12 @@ export class Editor {
   private drag: Drag | null = null
   private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null
   private lastPatch = 0
+  // T-17: per-client undo as compensating ops. Each entry stores the
+  // ops that REVERSE an action and the ops that redo it — undo is a
+  // fresh submit, so it wins LWW and replicates like any edit. The
+  // journal stays append-only; no protocol changes.
+  private readonly undoStack: { inv: WireOp[]; fwd: WireOp[] }[] = []
+  private readonly redoStack: { inv: WireOp[]; fwd: WireOp[] }[] = []
 
   constructor(
     private readonly session: Session,
@@ -85,6 +95,41 @@ export class Editor {
   }
 
   private id(): string { return `o-${Math.random().toString(36).slice(2, 10)}` }
+
+  // --- T-17 undo/redo -----------------------------------------------------
+  private recordUndo(inv: WireOp[], fwd: WireOp[]): void {
+    this.undoStack.push({ inv, fwd })
+    if (this.undoStack.length > 100) this.undoStack.shift()
+    this.redoStack.length = 0
+  }
+  private submitAll(ops: WireOp[]): void {
+    for (const o of ops) this.session.submit(o.type, o.payload)
+  }
+  /** Ctrl+Z: submit the inverses as NEW ops — newest seq wins LWW,
+   *  so undo is just another edit to every other client. */
+  undo(): void {
+    const e = this.undoStack.pop()
+    if (!e) return
+    this.submitAll(e.inv)
+    this.redoStack.push(e)
+    this.redraw()
+  }
+  /** Ctrl+Y / Ctrl+Shift+Z. */
+  redo(): void {
+    const e = this.redoStack.pop()
+    if (!e) return
+    this.submitAll(e.fwd)
+    this.undoStack.push(e)
+    this.redraw()
+  }
+  /** Text overlay commit — routed through the editor so undo sees it. */
+  commitText(id: string, text: string): void {
+    const old = this.find(id)?.props['text']
+    this.recordUndo(
+      [{ type: 'Patch', payload: { id, props: { text: old ?? null } } }],
+      [{ type: 'Patch', payload: { id, props: { text } } }])
+    this.session.submit('Patch', { id, props: { text } })
+  }
 
   private topZ(): string {
     const top = this.objects().at(-1)?.z
@@ -263,6 +308,11 @@ export class Editor {
           // Click-place: keep a default-size text and open the editor.
           this.session.submit('Patch', { id: oid, props: { w: 120, h: 24 } })
           this.wantEdit = oid
+          const placed = this.find(oid)
+          if (placed) this.recordUndo(
+            [{ type: 'Delete', payload: { id: oid } }],
+            [{ type: 'Create', payload: {
+              id: oid, kind: 'text', z: placed.z, props: { ...placed.props } } }])
           continue
         }
         if (d.localCreate) this.session.applyLocal('Delete', { id: oid })
@@ -270,28 +320,58 @@ export class Editor {
         this.selected.delete(oid)
       }
     } else if (d.localCreate) {
+      const props = d.orig.get(d.localCreate.id)!
       this.session.submit('Create', {
-        id: d.localCreate.id, kind: 'path', z: d.localCreate.z,
-        props: d.orig.get(d.localCreate.id)!,
-      })
-    } else if (d.moved) {
-      // Throttle may have dropped the last frame — flush final props.
+        id: d.localCreate.id, kind: 'path', z: d.localCreate.z, props })
+      this.recordUndo(
+        [{ type: 'Delete', payload: { id: d.localCreate.id } }],
+        [{ type: 'Create', payload: {
+          id: d.localCreate.id, kind: 'path', z: d.localCreate.z, props } }])
+    } else if (d.moved && d.mode === 'create') {
+      // Shape placed: the Create already went on the wire at mousedown;
+      // undo removes the object, redo recreates it with final props.
       for (const oid of d.orig.keys()) {
+        const o = this.find(oid)
+        if (!o) continue
+        this.recordUndo(
+          [{ type: 'Delete', payload: { id: oid } }],
+          [{ type: 'Create', payload: {
+            id: oid, kind: o.kind, z: o.z, props: { ...o.props } } }])
+      }
+    } else if (d.moved) {
+      // Gesture commit (move/resize/rotate): one undo entry covering
+      // every touched object — inverse restores drag-start props.
+      const inv: WireOp[] = [], fwd: WireOp[] = []
+      for (const [oid, orig] of d.orig) {
         const props = this.find(oid)?.props
         if (!props) continue
         const flush: Record<string, unknown> = {}
         for (const k of ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2', 'rot', 'points'])
           if (props[k] !== undefined) flush[k] = props[k]
         this.session.submit('Patch', { id: oid, props: flush })
+        inv.push({ type: 'Patch', payload: { id: oid, props: { ...orig } } })
+        fwd.push({ type: 'Patch', payload: { id: oid, props: flush } })
       }
+      if (fwd.length) this.recordUndo(inv, fwd)
     }
     this.redraw()
   }
 
   /** Keys that mutate the document or selection. */
-  key(key: string, ctrl = false): void {
+  key(key: string, ctrl = false, shift = false): void {
+    if (ctrl && (key === 'z' || (key === 'Z' && !shift))) { this.undo(); return }
+    if (ctrl && (key === 'y' || (key === 'Z' && shift))) { this.redo(); return }
     if (key === 'Delete' || key === 'Backspace') {
-      for (const id of this.selected) this.session.submit('Delete', { id })
+      // Compensating-op undo: inverse = Create with the pre-delete state.
+      const inv: WireOp[] = [], fwd: WireOp[] = []
+      for (const id of this.selected) {
+        const o = this.find(id)
+        if (!o) continue
+        inv.push({ type: 'Create', payload: {
+          id, kind: o.kind, z: o.z, props: { ...o.props } } })
+        fwd.push({ type: 'Delete', payload: { id } })
+      }
+      if (fwd.length) { this.recordUndo(inv, fwd); this.submitAll(fwd) }
       this.selected.clear()
       this.redraw()
       return
@@ -304,6 +384,7 @@ export class Editor {
   /** Ctrl+D: clone each selected object at +20/+20, topmost z. */
   private duplicate(): void {
     const created = new Set<string>()
+    const inv: WireOp[] = [], fwd: WireOp[] = []
     for (const oid of this.selected) {
       const o = this.find(oid)
       if (!o) continue
@@ -319,9 +400,13 @@ export class Editor {
         for (const k of ['x1', 'x2']) props[k] = num(props, k) + 20
         for (const k of ['y1', 'y2']) props[k] = num(props, k) + 20
       }
-      this.session.submit('Create', { id: nid, kind: o.kind, z: this.topZ(), props })
+      const cz = this.topZ()
+      this.session.submit('Create', { id: nid, kind: o.kind, z: cz, props })
+      fwd.push({ type: 'Create', payload: { id: nid, kind: o.kind, z: cz, props } })
+      inv.push({ type: 'Delete', payload: { id: nid } })
       created.add(nid)
     }
+    if (fwd.length) this.recordUndo(inv, fwd)
     this.selected.clear()
     for (const id of created) this.selected.add(id)
     this.redraw()
@@ -333,10 +418,16 @@ export class Editor {
     const objs = this.objects()
     if (objs.length === 0) return
     const edge = dir > 0 ? objs.at(-1)!.z : objs[0]!.z
+    const inv: WireOp[] = [], fwd: WireOp[] = []
     for (const oid of this.selected) {
+      const o = this.find(oid)
+      if (!o) continue
       const z = dir > 0 ? FractionalIndex.after(edge) : FractionalIndex.before(edge)
       this.session.submit('Reorder', { id: oid, z })
+      inv.push({ type: 'Reorder', payload: { id: oid, z: o.z } })
+      fwd.push({ type: 'Reorder', payload: { id: oid, z } })
     }
+    if (fwd.length) this.recordUndo(inv, fwd)
     this.redraw()
   }
 

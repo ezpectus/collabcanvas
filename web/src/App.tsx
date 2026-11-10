@@ -115,7 +115,7 @@ export default function App() {
     const st = editingRef.current
     if (!st) return
     if (commit && value !== undefined)
-      session().submit('Patch', { id: st.id, props: { text: value } })
+      editorRef.current?.commitText(st.id, value) // undo-tracked
     else if (!commit)
       session().applyLocal('Patch', { id: st.id, props: { text: st.orig } })
     editingRef.current = null
@@ -173,7 +173,7 @@ export default function App() {
         }
       }
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
-      editor().key(e.key, e.ctrlKey || e.metaKey)
+      editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey)
     }
     const up = (e: KeyboardEvent) => { if (e.key === ' ') spaceDown.current = false }
     window.addEventListener('keydown', down)
