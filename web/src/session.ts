@@ -42,12 +42,25 @@ export class Session {
   /** Share-link grant (T-26 stage 3) — re-sent on every (re)join and
       re-checked server-side on every op. */
   grant: string | null = null
+  /** Bearer token — kept for blob URLs (img can't send headers). */
+  token: string | null = null
+
+  /** T-36: authenticated blob URL for <img> loading — credentials
+      ride the query because img tags can't set headers. */
+  blobUrl(blobId: string): string {
+    const q = new URLSearchParams()
+    if (this.token) q.set('token', this.token)
+    if (this.grant) q.set('grant', this.grant)
+    const s = q.toString()
+    return `/blobs/${encodeURIComponent(blobId)}${s ? `?${s}` : ''}`
+  }
 
   async join(docId: string, clientId: string, url = '/hubs/document',
     token?: string | null, grant?: string | null): Promise<void> {
     this.docId = docId
     this.clientId = clientId
     this.grant = grant ?? null
+    this.token = token ?? null
     const conn = new signalR.HubConnectionBuilder()
       .withUrl(url, token ? { accessTokenFactory: () => token } : {})
       // Reconnect storm handling (T-10): exp backoff + full jitter —

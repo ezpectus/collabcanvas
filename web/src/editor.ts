@@ -221,6 +221,19 @@ export class Editor {
     return top ? FractionalIndex.after(top) : FractionalIndex.first()
   }
 
+  /** T-36: drop an uploaded blob onto the canvas — a real Create op,
+      src = blobId. Placed at viewport center, natural aspect kept. */
+  insertImage(blobId: string, x: number, y: number,
+    nw: number, nh: number): void {
+    const id = this.id()
+    const w = 160, h = nw ? Math.max(8, (w * nh) / nw) : 120
+    this.session.submit('Create', {
+      id, kind: 'image', z: this.topZ(),
+      props: { x: x - w / 2, y: y - h / 2, w, h, src: blobId } })
+    this.selected.clear(); this.selected.add(id)
+    this.redraw()
+  }
+
   /** T-16: the 8 handles of a single selected box-kind object, world
    *  coords (corners + edge midpoints of the rotated quad). Line/path
    *  get none — scaling a point set is a different op (honest edge). */

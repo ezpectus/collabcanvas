@@ -221,6 +221,7 @@ export default function App() {
       () => editorRef.current?.guides ?? [],
     )
     rendererRef.current = r
+    r.blobUrl = (id) => session().blobUrl(id)
     r.onFrame = (s) => { if (++statTick.current % 6 === 0) setStats({ ...s }) }
     r.start()
     return () => r.stop()
@@ -569,6 +570,36 @@ export default function App() {
           <button className="tool" title="no fill / no stroke (hollow)"
             onClick={() => editor().applyColor('none',
               paintMode === 'stroke')}>⊘</button>
+          {/* T-36: image upload → blob → image object at view center. */}
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+            id="img-upload" style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (!f || state !== 'joined') return
+              void (async () => {
+                const res = await fetch(
+                  `/docs/${encodeURIComponent(docId)}/blobs`
+                    + (grant ? `?grant=${encodeURIComponent(grant)}` : ''),
+                  { method: 'POST',
+                    headers: { 'Content-Type': f.type,
+                      Authorization: `Bearer ${token}` }, body: f })
+                if (!res.ok) { setShareErr(`upload: ${res.status}`); return }
+                const { id } = await res.json() as { id: string }
+                const v = rendererRef.current!.view
+                const cv = canvasRef.current!
+                const cx = (cv.clientWidth / 2 - v.x) / v.scale
+                const cy = (cv.clientHeight / 2 - v.y) / v.scale
+                const probe = new Image()
+                probe.onload = () => editor().insertImage(
+                  id, cx, cy, probe.naturalWidth, probe.naturalHeight)
+                probe.onerror = () => editor().insertImage(id, cx, cy, 0, 0)
+                probe.src = URL.createObjectURL(f)
+              })()
+            }} />
+          <button className="tool" title="upload image"
+            onClick={() => document.getElementById('img-upload')?.click()}>
+            img⭱</button>
         </>)}
         <button onClick={() => {
           // T-22: export — the canvas is already a bitmap; toDataURL

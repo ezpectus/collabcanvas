@@ -256,6 +256,60 @@ app.MapPatch("/docs/{id}", async (
     return Results.NoContent();
 });
 
+// T-36: image blobs — Redis store for MVP (single-stack choice:
+// no new service; caps keep memory honest — 5MB/blob, 50/doc;
+// a real image pipeline would move bytes to disk/S3, documented).
+app.MapPost("/docs/{id}/blobs", async (
+    string id, IConnectionMultiplexer redis,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users,
+    HttpRequest req) =>
+{
+    // Upload = a document mutation: editor+ (or legacy-open).
+    var cr = await CallerRole(members, users, req, id,
+        req.Query["grant"]);
+    if (cr is null || cr < CollabCanvas.Api.Auth.RoomRole.Editor)
+        return Results.StatusCode(403);
+    var type = req.ContentType ?? "";
+    if (type is not ("image/png" or "image/jpeg" or "image/webp"
+        or "image/gif"))
+        return Results.BadRequest("png/jpeg/webp/gif only");
+    var ms = new System.IO.MemoryStream();
+    await req.Body.CopyToAsync(ms);
+    if (ms.Length is 0 or > 5_000_000)
+        return Results.BadRequest("blob 1B..5MB");
+    var db = redis.GetDatabase();
+    if (await db.SetLengthAsync($"doc:{id}:blobs") >= 50)
+        return Results.StatusCode(429); // per-doc blob quota
+    var blobId = Convert.ToBase64String(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(12))
+        .Replace('+', '-').Replace('/', '_');
+    await db.StringSetAsync($"blob:{blobId}", ms.ToArray());
+    await db.HashSetAsync($"blob:{blobId}:meta", [
+        new("doc", id), new("type", type),
+        new("size", ms.Length.ToString())]);
+    await db.SetAddAsync($"doc:{id}:blobs", blobId);
+    return Results.Ok(new { id = blobId });
+});
+
+// Read = same rule as /ops: owned doc → member or grant holder.
+// img tags can't send Authorization — token/grant ride the query.
+app.MapGet("/blobs/{id}", async (
+    string id, IConnectionMultiplexer redis,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    var doc = await redis.GetDatabase().HashGetAsync($"blob:{id}:meta", "doc");
+    if (doc.IsNullOrEmpty) return Results.NotFound();
+    var cr = await CallerRole(members, users, req, doc.ToString()!,
+        req.Query["grant"]);
+    if (cr is null) return Results.StatusCode(403);
+    var bytes = await redis.GetDatabase().StringGetAsync($"blob:{id}");
+    var type = await redis.GetDatabase().HashGetAsync($"blob:{id}:meta", "type");
+    return bytes.IsNullOrEmpty ? Results.NotFound()
+        : Results.File((byte[])bytes!, type.ToString() ?? "application/octet-stream");
+});
+
 app.MapDelete("/docs/{id}", async (
     IConnectionMultiplexer redis,
     CollabCanvas.Api.Auth.MembershipStore members,
@@ -301,16 +355,31 @@ app.MapPost("/auth/register", async (
 
 app.MapPost("/auth/login", async (
     CollabCanvas.Api.Auth.UserStore users,
+    IConnectionMultiplexer redis,
     System.Text.Json.JsonElement body) =>
 {
     var login = body.TryGetProperty("login", out var l) ? l.GetString() : null;
     var pass = body.TryGetProperty("password", out var p) ? p.GetString() : null;
     if (login is null || pass is null) return Results.BadRequest("login+password");
+    // Throttle (T-26 residual hole): 8 fails / login / 10min → 429.
+    // bcrypt already costs ~70ms; this stops a scripted grind, not
+    // a typo. Key is per-login — per-IP would punish shared NATs.
+    var rlKey = $"auth:rl:{login}";
+    var fails = await redis.GetDatabase().StringGetAsync(rlKey);
+    if (fails.HasValue && (int)fails >= 8)
+        return Results.StatusCode(429);
     var token = await users.LoginAsync(login, pass);
-    // Same answer for unknown user and wrong password — don't leak
-    // which logins exist (standard enumeration hardening).
-    return token is null ? Results.Unauthorized()
-                       : Results.Ok(new { token, login });
+    var db = redis.GetDatabase();
+    if (token is null)
+    {
+        await db.StringIncrementAsync(rlKey);
+        await db.KeyExpireAsync(rlKey, TimeSpan.FromMinutes(10));
+        // Same answer for unknown user and wrong password — don't
+        // leak which logins exist (enumeration hardening).
+        return Results.Unauthorized();
+    }
+    await db.KeyDeleteAsync(rlKey);
+    return Results.Ok(new { token, login });
 });
 
 // Resolve by Authorization: Bearer <token> or ?token= (SignalR
@@ -346,13 +415,19 @@ static string? Bearer(HttpRequest req)
 static async Task<CollabCanvas.Api.Auth.RoomRole?> CallerRole(
     CollabCanvas.Api.Auth.MembershipStore members,
     CollabCanvas.Api.Auth.UserStore users,
-    HttpRequest req, string docId)
+    HttpRequest req, string docId, object? grant = null)
 {
-    if (!await members.IsOwnedAsync(docId))
-        return CollabCanvas.Api.Auth.RoomRole.Editor;
-    return await users.ResolveAsync(Bearer(req)) is { } who
-        ? await members.RoleOfAsync(docId, who.login)
-        : null;
+    // Same precedence as the hub: member > link > legacy-open.
+    // A viewer grant must never downgrade a member's real role.
+    if (await users.ResolveAsync(Bearer(req)) is { } who &&
+        await members.RoleOfAsync(docId, who.login) is { } m)
+        return m;
+    var g = grant?.ToString();
+    if (!string.IsNullOrEmpty(g) &&
+        await members.LinkRoleAsync(docId, g) is { } link)
+        return link;
+    return await members.IsOwnedAsync(docId)
+        ? null : CollabCanvas.Api.Auth.RoomRole.Editor;
 }
 
 app.MapHub<DocumentHub>("/hubs/document");

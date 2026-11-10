@@ -24,6 +24,10 @@ export class Renderer {
   /** T-25: minimap overlay, toggled with `m`. */
   showMinimap = false
   readonly view: Viewport = { x: 80, y: 60, scale: 1 }
+  /** T-36: blobId → authenticated URL (set by App via session). */
+  blobUrl: ((id: string) => string) | null = null
+  /** blobId → image | 'err' (absent = still loading, kicked once). */
+  private readonly imgCache = new Map<string, HTMLImageElement | 'err'>()
   private dirty = true
   private raf = 0
   private ro: ResizeObserver | null = null
@@ -43,6 +47,20 @@ export class Renderer {
   ) {}
 
   markDirty(): void { this.dirty = true }
+
+  /** T-36: cached blob image — returns the element once loaded,
+      'err' on failure, null while still fetching (kick once). */
+  private imgFor(src: string): HTMLImageElement | 'err' | null {
+    const hit = this.imgCache.get(src)
+    if (hit !== undefined) return hit === 'err' ? 'err' : hit.complete && hit.naturalWidth ? hit : null
+    if (!this.blobUrl) return 'err'
+    const el = new Image()
+    el.onload = () => this.markDirty()
+    el.onerror = () => { this.imgCache.set(src, 'err'); this.markDirty() }
+    el.src = this.blobUrl(src)
+    this.imgCache.set(src, el)
+    return null
+  }
 
   start(): void {
     // Track the parent box, not window: canvas fills a flex cell.
@@ -143,7 +161,7 @@ export class Renderer {
 
     // Quadtree culling: pay per drawn object, not per object in doc.
     const objects = this.index.visibleIn(this.model, view)
-    for (const o of objects) drawObject(ctx, o)
+    for (const o of objects) drawObject(ctx, o, (s) => this.imgFor(s))
     const drawn = objects.length
 
     for (const quad of this.getSelection()) this.drawSelection(ctx, quad)
@@ -303,7 +321,8 @@ export class Renderer {
   }
 }
 
-function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
+function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject,
+  imgFor: (src: string) => HTMLImageElement | 'err' | null = () => 'err'): void {
   const p = o.props
   // T-39: per-object opacity — plain prop, LWW-merged for free.
   const alpha = num(p, 'opacity', 1)
@@ -405,16 +424,22 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       break
     }
     case 'image': {
-      // URL stub (T-1): draw a framed placeholder — real loading is
-      // stretch; an <img> cache here would be the first leak candidate.
       const x = num(p, 'x'), y = num(p, 'y'), w = num(p, 'w', 80), h = num(p, 'h', 60)
-      ctx.fillStyle = '#2a2a38'
-      ctx.fillRect(x, y, w, h)
-      ctx.strokeStyle = '#3a3f55'
-      ctx.strokeRect(x, y, w, h)
-      ctx.fillStyle = '#777f96'
-      ctx.font = '10px sans-serif'
-      ctx.fillText('img', x + 4, y + 12)
+      // T-36: props.src = blobId → async img load, placeholder until
+      // it lands. Cache survives frames; 'err' keeps the frame cheap.
+      const src = typeof p['src'] === 'string' ? p['src'] as string : null
+      const img = src ? imgFor(src) : 'err'
+      if (img instanceof HTMLImageElement) {
+        ctx.drawImage(img, x, y, w, h)
+      } else {
+        ctx.fillStyle = '#2a2a38'
+        ctx.fillRect(x, y, w, h)
+        ctx.strokeStyle = '#3a3f55'
+        ctx.strokeRect(x, y, w, h)
+        ctx.fillStyle = '#777f96'
+        ctx.font = '10px sans-serif'
+        ctx.fillText(img === 'err' ? 'img ✕' : 'img…', x + 4, y + 12)
+      }
       break
     }
   }

@@ -392,6 +392,31 @@ ok('links: revoked grant denied on live socket',
   revAck.accepted === false && revAck.reason === 'forbidden', revAck.reason)
 await GV.conn.stop(); await GE.conn.stop()
 
+// --- T-36: image blobs ------------------------------------------------------------------
+const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+  0, 0, 0, 0x0D, 0x49, 0x48, 0x44, 0x52]) // png magic + ihdr head
+const blobPost = (body, tk, type = 'image/png') =>
+  fetch(`${API}/docs/${OWN}/blobs`, { method: 'POST',
+    headers: { 'Content-Type': type, Authorization: `Bearer ${tk}` },
+    body })
+const bRes = await blobPost(png, reg3.token)
+ok('blobs: editor member uploads', bRes.status === 200, `s=${bRes.status}`)
+const blobId = bRes.ok ? (await bRes.json()).id : null
+ok('blobs: member reads blob', blobId &&
+  (await authed(`/blobs/${blobId}`, reg3.token)).status === 200)
+ok('blobs: stranger 403', blobId &&
+  (await fetch(`${API}/blobs/${blobId}`)).status === 403)
+ok('blobs: viewer-grant holder reads', blobId && vTok &&
+  (await fetch(`${API}/blobs/${blobId}?grant=${vTok}`)).status === 200)
+ok('blobs: bad type refused',
+  (await blobPost(png, reg3.token, 'text/html')).status === 400)
+ok('blobs: oversize refused', (await blobPost(
+  Buffer.alloc(5_000_001), reg3.token)).status === 400)
+ok('blobs: viewer member cannot upload',
+  (await authed(`/docs/${OWN}/members`, token, { method: 'POST',
+    body: JSON.stringify({ login: u2, role: 'viewer' }) }),
+   await blobPost(png, reg2.token)).status === 403)
+
 // --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
 const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()
 ok('ops endpoint: journal tail readable',
