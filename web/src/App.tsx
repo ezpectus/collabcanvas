@@ -584,6 +584,14 @@ export default function App() {
         )}
         {state === 'joined' && <Inspector editor={editor()}
           model={session().model} />}
+        {/* Empty-doc onboarding hint — a blank canvas otherwise
+            gives no affordance. Hidden the moment anything exists. */}
+        {state === 'joined' && !session().model.objectCount() && (
+          <div className="empty-hint">
+            pick a tool above — <b>r</b>ect, <b>t</b>ext, <b>p</b>ath…
+            press <b>?</b> for shortcuts
+          </div>
+        )}
         {showHelp && (
           <aside className="history-panel help-panel">
             <b>Shortcuts</b>

@@ -258,3 +258,8 @@ Engine). Закрытые таски — `docs/done-log.md`.
   stroke/hollow props wired end-to-end (addbafe, 09a2fc1, 57d9ac8,
   b1624da, 20726d3, 6d081b2); lineWidth leak fix (8894b29);
   PLAN/roadmap/checklist syncs (8c72e7d, 3823b1d, 660acdb)
+- T-40 multi-inspector union translate (2385f31, 3d5e1de); layers
+  cap 200 (9baec7d); Esc panel-dismiss + deps fix (6baf76b);
+  inspector/minimap overlap (e1803ee); T-41 layers drag-reorder
+  (dffbe45, 17b6f4a); T-42 clipboard trio (98597ed, d92b7b1);
+  status.md inventory (9c0505b); ledger (6668c65)
