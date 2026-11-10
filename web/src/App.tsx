@@ -600,14 +600,21 @@ export default function App() {
     markDirty()
   }, [markDirty])
 
-  const world = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const world = (e: { clientX: number; clientY: number;
+    currentTarget: HTMLCanvasElement }) => {
     const rect = e.currentTarget.getBoundingClientRect()
     return rendererRef.current!.toWorld(
       e.clientX - rect.left, e.clientY - rect.top)
   }
 
-  const panning = (e: React.MouseEvent<HTMLCanvasElement>) =>
+  const panning = (e: { button: number }) =>
     e.button === 1 || e.button === 2 || spaceDown.current
+
+  // Touch: pointer events unify mouse/pen/finger. One finger acts
+  // like a left-drag; a second finger switches to pinch — mid-gesture
+  // the one-finger action is ended cleanly (mouseUp) before zooming.
+  const ptrs = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ d: number; mx: number; my: number } | null>(null)
 
   return (
     <div className="shell">
@@ -747,15 +754,30 @@ export default function App() {
           ref={canvasRef}
           className="board"
           onContextMenu={(e) => e.preventDefault()}
-          onMouseDown={(e) => {
-            if (panning(e)) panDrag.current = { x: e.clientX, y: e.clientY }
-            else if (e.button === 0) {
-              const w = world(e)
-              editor().mouseDown(w.x, w.y, rendererRef.current!.view.scale,
-                e.shiftKey)
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+            if (ptrs.current.size === 2) {
+              const [a, b] = [...ptrs.current.values()]
+              pinch.current = { d: Math.hypot(b!.x - a!.x, b!.y - a!.y),
+                mx: (a!.x + b!.x) / 2, my: (a!.y + b!.y) / 2 }
+              panDrag.current = null; editor().mouseUp()
+              return
             }
+            if (e.pointerType === 'mouse') {
+              if (panning(e)) {
+                panDrag.current = { x: e.clientX, y: e.clientY }
+                return
+              }
+              if (e.button !== 0) return
+            }
+            const w = world(e)
+            editor().mouseDown(w.x, w.y, rendererRef.current!.view.scale,
+              e.shiftKey)
           }}
-          onMouseUp={() => {
+          onPointerUp={(e) => {
+            ptrs.current.delete(e.pointerId)
+            if (ptrs.current.size < 2) pinch.current = null
             panDrag.current = null
             editor().mouseUp()
             drainEditRequest()
@@ -764,15 +786,39 @@ export default function App() {
             sessionRef.current?.sendPresence(lastPos.current.x,
               lastPos.current.y, color.current, [...editor().selected])
           }}
-          onMouseLeave={() => { panDrag.current = null; editor().mouseUp() }}
+          onPointerCancel={(e) => {
+            ptrs.current.delete(e.pointerId)
+            if (ptrs.current.size < 2) pinch.current = null
+            panDrag.current = null; editor().mouseUp()
+          }}
+          onPointerLeave={(e) => {
+            // With capture set, leave mostly fires for mice — keep
+            // the old safety net for that case only.
+            if (e.pointerType === 'mouse' && ptrs.current.size === 0)
+              { panDrag.current = null; editor().mouseUp() }
+          }}
           onDoubleClick={(e) => {
             const w = world(e)
             editor().dblClick(w.x, w.y)
             drainEditRequest()
           }}
-          onMouseMove={(e) => {
+          onPointerMove={(e) => {
             const r = rendererRef.current
             if (!r) return
+            const prev = ptrs.current.get(e.pointerId)
+            if (prev) { prev.x = e.clientX; prev.y = e.clientY }
+            if (pinch.current && ptrs.current.size >= 2) {
+              const [a, b] = [...ptrs.current.values()]
+              const d = Math.hypot(b!.x - a!.x, b!.y - a!.y)
+              const mx = (a!.x + b!.x) / 2, my = (a!.y + b!.y) / 2
+              const rect = e.currentTarget.getBoundingClientRect()
+              if (pinch.current.d > 0)
+                r.zoomAt(mx - rect.left, my - rect.top,
+                  d / pinch.current.d)
+              r.pan(mx - pinch.current.mx, my - pinch.current.my)
+              pinch.current = { d, mx, my }
+              return
+            }
             const w = world(e)
             if (panDrag.current) {
               r.pan(e.clientX - panDrag.current.x, e.clientY - panDrag.current.y)
