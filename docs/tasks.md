@@ -597,12 +597,18 @@ object + viewport rect; docBounds cache theo model.version. Mặc
   MembershipStore.TryParse столкнулся с конвенцией биндинга
   (→ParseRole). Край: EffectiveRole = 1-2 Redis-чтения на op —
   без кэша намеренно (кэш = окно revocation).
-- **stage 3 `todo`**: link-grant'ы `doc:{id}:link:{token}`→
-  viewer|editor (owner/admin НЕ выдаются по ссылке), issue/revoke
-  через owner/admin, `JoinDocumentRequest.grant` пробивается в
-  EffectiveRole, revoke гасит живой сокет тем же per-op путём.
-- **stage 4 `todo`**: share-UI + viewer-mode (UI прячет кнопки,
-  но enforce всегда на сервере).
+- **stage 3 `review`** (97eca9b): `doc:{id}:links` hash token→role,
+  линк отчеканивает ТОЛЬКО viewer|editor (owner/admin-линк = отдать
+  док — отказ). EffectiveRole: member>link>legacy. Грант кэширован
+  на соединении и перевалидируется НА КАЖДОМ op — revoke валит живой
+  сокет следующим op'ом. Эндпоинты GET/POST/DELETE /docs/{id}/links
+  (admin+). Клиент: ?grant= из URL в каждый (re)join. Бот +9.
+- **stage 4 `review`** (1e1868a): share-панель (минт линков в
+  буфер, seat members, список), viewer-mode — tools/inspector
+  прячутся + `session.submit()` = единая точка отказа для
+  role==='viewer' (косметика; enforce на сервере). Пойман баг:
+  denied-ack чистил pending, но optimistic-apply оставлял фантом —
+  теперь denied триггерит rejoin-ресинк.
 - **Дыры стадии 1, честно** (задокументированы, чинятся на 2+):
   /docs по-прежнему перечисляет всё · гость = полный редактор
   (legacy, флип в stage 2) · logout убивает sess, но ОТКРЫТЫЙ

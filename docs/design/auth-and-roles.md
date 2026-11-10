@@ -153,3 +153,32 @@ op — без кэша сознательно (кэш = окно revocation; п�
 owned-доке молча дропается · членство по login, не uid — rename
 аккаунта (фичи нет) потребует переноса · viewer видит курсоры
 (presence read-only по природе).
+
+## Stage 3+4 — статус (97eca9b + 1e1868a, в `review`)
+
+Link-grant'ы: `doc:{id}:links` hash token→role (24-символьный
+base64url, ~144 бита). Кап: только viewer|editor — owner/admin
+линком не выдаются никогда (утёкший owner-линк = украденный док).
+EffectiveRole: member > link > legacy. Грант кэширован на
+соединении (`Context.Items["grant"]`) и перевалидируется НА КАЖДОМ
+op — revoke валит живой сокет тем же путём, что и членство.
+
+Share-UI: owner/admin минтит линки в буфер обмена, садит members
+по login+role, видит список. Viewer-mode: tools/colors/inspector
+скрыты, `session.submit()` — единая точка отказа на клиенте
+(косметика; enforce всегда сервер).
+
+Пойман настоящий баг при прокладке: denied-ack (`accepted:false`)
+чистил pending, но НЕ откатывал optimistic-apply — фантомный
+объект жил локально до перезахода. Фикс: denied-ack → rejoin()
+(журнальная истина затирает фантом); то же в replay-цикле
+rejoin'а (по одному ресинку на пачку, без рекурсии — отвергнутая
+опа уже удалена из pending).
+
+T-26 закрыт по плану раскатки. Остаточные дыры (честно, все
+записаны): /auth/login без throttle · membership по login (rename
+потребует миграции) · per-op check = 1-2 Redis-чтения (осознанно,
+без кэша) · HubException-текст доезжает обёрнутым · grant в
+sessionStorage/URL виден в истории браузера — Canva-эквивалент
+(ссылка и есть доступ) · нет link-expiry (TTL на грант — если
+понадобится).

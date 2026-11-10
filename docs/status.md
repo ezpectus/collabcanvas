@@ -43,7 +43,7 @@
 
 | Таск | Размер | Почему нужен / что блокирует |
 |---|---|---|
-| T-26 Auth + share-права | L | Stage 1+2 ✅ в review: users/sessions, membership-роли (owner/admin/editor/viewer), enforce на join/ops//docs/DELETE/members, бот +25 auth-чеков. Осталось: link-grant'ы (guest по ссылке), share-UI — см. `docs/design/auth-and-roles.md` и T-26 |
+| T-26 Auth + share-права | L | Все 4 этапа в review: users/sessions, роли (owner/admin/editor/viewer), link-grant'ы guest viewer/editor, share-UI + viewer-mode, бот +34 auth-чеков. Остаточные дыры — в T-26 (throttle логина, rename, per-op Redis-стоимость) |
 | Image upload | L | `image` kind есть со стабом. Нужен blob store (props-лимит 64KB) + upload-эндпоинт — инфра-решение |
 | Группировка объектов | L | Parent-child схема в модели; сейчас multi-select — временная группа. Дизайн: группа как объект или тег? |
 | Co-typing текста | XL | Операционный уровень вместо whole-string LWW. Сознательно отложено — дорого |
@@ -59,10 +59,10 @@
 
 - 47 xUnit (LWW, fractional index, room order, chaos/reconnect)
 - Node-харнессы: resize-математика 9/9, RDP path
-- Live-бот 47/47: create/patch/delete, presence, rate-limit,
-  reconnect, /ops, DELETE /docs + auth (register/login/me/
-  серверное имя) + authz (join-deny, op-forbidden, promote/revoke
-  на живом сокете, admin-границы, /docs+/ops+DELETE-гейты)
+- Live-бот 56/56: create/patch/delete, presence, rate-limit,
+  reconnect, /ops, DELETE /docs + auth (register/login/me/имя)
+  + authz (роли, revoke на живом сокете, admin-границы, гейты)
+  + links (forged grant, guest viewer/editor, cap ролей, revoke)
 - НЕ покрыто UI-жесты: бот wire-уровня, хендлы/marquee/lock —
   ручная проверка или будущий browser-тест (если потребуется —
   отдельное решение про playwright vs самописный)
