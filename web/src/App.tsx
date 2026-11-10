@@ -408,6 +408,9 @@ export default function App() {
     const id = next.trim()
     if (!id || id === docId) return
     setDocId(id)
+    // Grant intentionally NOT carried: it's doc-scoped — leaking
+    // doc A's bearer token into doc B URLs is worse than losing
+    // it on switch (session.switchDoc still re-sends the real one).
     history.replaceState(null, '', `?doc=${encodeURIComponent(id)}`)
     await session().switchDoc(id)
     void refreshDocs()
