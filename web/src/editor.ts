@@ -421,6 +421,15 @@ export class Editor {
       this.redraw()
       return
     }
+    if (key === 'Escape') {
+      this.selected.clear(); this.redraw(); return
+    }
+    if (ctrl && (key === 'a' || key === 'A')) {
+      // Ctrl+A: every object — standard select-all. Undo-safe (no doc
+      // mutation, just selection state).
+      for (const o of this.objects()) this.selected.add(o.id)
+      this.redraw(); return
+    }
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
     if (key === ']') { this.reorder(1); return }
     if (key === '[') { this.reorder(-1); return }
