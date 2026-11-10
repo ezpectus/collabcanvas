@@ -327,6 +327,13 @@ export default function App() {
     const down = (e: KeyboardEvent) => {
       if (editingRef.current) return // typing belongs to the overlay
       if (e.key === ' ') { spaceDown.current = true; return }
+      // Esc closes the topmost panel before falling through to the
+      // editor's deselect — standard "esc dismisses surface" rule.
+      if (e.key === 'Escape' &&
+          (showHelp || showLayers || hist !== null)) {
+        setShowHelp(false); setShowLayers(false); setHistory(null)
+        return
+      }
       const map: Record<string, Tool> = {
         v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text', p: 'path',
       }
@@ -370,7 +377,8 @@ export default function App() {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [editor])
+    // deps include panel states — the Esc check above reads them.
+  }, [editor, showHelp, showLayers, hist])
 
   const stress = useCallback((n: number) => {
     if (n === 0) session().model.clearGhosts()
