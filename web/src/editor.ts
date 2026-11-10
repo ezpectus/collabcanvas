@@ -7,7 +7,7 @@
 // throttled 80ms, final flush on mouseup. Deltas apply to props as of
 // mouseDown — no float drift, no mid-drag hijack by foreign patches.
 
-import { boundsOf, computeResize, num, type BBox } from './geometry'
+import { boundsOf, computeResize, num, quadOf, type BBox } from './geometry'
 import type { CanvasObject } from './model'
 import { FractionalIndex } from './fractionalIndex'
 import { SceneIndex } from './quadtree'
@@ -31,18 +31,6 @@ interface Drag {
   localCreate?: { id: string; z: string }
 }
 
-const rad = (deg: number) => (deg * Math.PI) / 180
-
-/** AABB → rotated quad corners around its center (rot degrees). */
-function quadOf(b: BBox, rotDeg: number): Quad {
-  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
-  const c = Math.cos(rad(rotDeg)), s = Math.sin(rad(rotDeg))
-  return [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]]
-    .map(([x, y]) => ({
-      x: cx + (x! - cx) * c - (y! - cy) * s,
-      y: cy + (x! - cx) * s + (y! - cy) * c,
-    }))
-}
 
 export class Editor {
   tool: Tool = 'select'

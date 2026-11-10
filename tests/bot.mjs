@@ -132,10 +132,12 @@ ok('patch: seq is monotonic', ackP.seq === ack1.seq + 1, `seq=${ackP.seq}`)
 // --- presence --------------------------------------------------------------------
 await A.conn.invoke('Presence', {
   docId: DOC, clientId: 'bot-a', cursor: { x: 7, y: 9 },
-  selection: [], color: '#fff' })
+  selection: ['r-1'], color: '#fff' })
 const pres = await waitFor(
   () => B.presence.find(p => p.clientId === 'bot-a'), 5000, 'B sees cursor')
 ok('presence: B receives cursor', pres?.update?.cursor?.x === 7)
+ok('presence: selection ids cross the wire',
+  pres?.update?.selection?.includes('r-1'))
 
 // --- late joiner gets the tail ----------------------------------------------------
 const C = client('bot-c')

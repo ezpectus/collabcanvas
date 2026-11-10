@@ -6,7 +6,7 @@
 
 import type { CanvasObject, DocModel } from './model'
 import type { PresenceUpdate } from './protocol'
-import { num, str, type BBox } from './geometry'
+import { num, quadOf, str, boundsOf, type BBox } from './geometry'
 import type { SceneIndex } from './quadtree'
 
 export interface Viewport { x: number; y: number; scale: number }
@@ -133,8 +133,31 @@ export class Renderer {
       ctx.setLineDash([])
     }
 
-    // Remote cursors on top — world-space dots + client label.
+    // Remote cursors + their selection frames (T-18): each user's
+    // selected objects get a dashed quad in THAT user's color.
+    let idMap: Map<string, CanvasObject> | null = null
     for (const u of this.getCursors()) {
+      if (u.selection?.length) {
+        if (!idMap) {
+          idMap = new Map()
+          for (const o of this.model.objects()) idMap.set(o.id, o)
+        }
+        ctx.strokeStyle = u.color
+        ctx.lineWidth = 1.5 / v.scale
+        ctx.setLineDash([5 / v.scale, 3 / v.scale])
+        for (const oid of u.selection) {
+          const o = idMap.get(oid)
+          const b = o && boundsOf(o)
+          if (!b) continue // stale selection on a deleted object — skip
+          const q = quadOf(b, num(o!.props, 'rot'))
+          ctx.beginPath()
+          ctx.moveTo(q[0]!.x, q[0]!.y)
+          for (const pt of q.slice(1)) ctx.lineTo(pt.x, pt.y)
+          ctx.closePath()
+          ctx.stroke()
+        }
+        ctx.setLineDash([])
+      }
       const c = u.cursor as { x?: number; y?: number }
       if (typeof c?.x !== 'number' || typeof c.y !== 'number') continue
       ctx.beginPath()

@@ -144,9 +144,11 @@ export class Session {
     }
   }
 
-  /** Cursor position, throttled to ~20/s — the server additionally
-   * rate-limits fanout (T-7), so this is politeness, not safety. */
-  sendPresence(x: number, y: number, color: string): void {
+  /** Cursor + selection (T-18: remotes draw your frame in YOUR
+   * color). Throttled to ~20/s — the server additionally rate-
+   * limits fanout (T-7), so this is politeness, not safety. */
+  sendPresence(x: number, y: number, color: string,
+    selection: string[] = []): void {
     const now = performance.now()
     if (!this.conn || now - this.lastPresence < 50) return
     this.lastPresence = now
@@ -154,7 +156,7 @@ export class Session {
       docId: this.docId,
       clientId: this.clientId,
       cursor: { x, y },
-      selection: [],
+      selection,
       color,
     })
   }

@@ -73,6 +73,7 @@ export default function App() {
   const clientId = useRef(`web-${Math.random().toString(36).slice(2, 8)}`)
   const color = useRef(COLORS[Math.floor(Math.random() * COLORS.length)]!)
   const panDrag = useRef<{ x: number; y: number } | null>(null)
+  const lastPos = useRef({ x: 0, y: 0 }) // for selection-only updates
   const spaceDown = useRef(false)
   const statTick = useRef(0)
 
@@ -240,6 +241,10 @@ export default function App() {
             panDrag.current = null
             editor().mouseUp()
             drainEditRequest()
+            // Selection can change without a move — push it now so
+            // remotes' colored frames don't lag a gesture behind.
+            sessionRef.current?.sendPresence(lastPos.current.x,
+              lastPos.current.y, color.current, [...editor().selected])
           }}
           onMouseLeave={() => { panDrag.current = null; editor().mouseUp() }}
           onDoubleClick={(e) => {
@@ -257,7 +262,9 @@ export default function App() {
             } else {
               editor().mouseMove(w.x, w.y, e.shiftKey)
             }
-            sessionRef.current?.sendPresence(w.x, w.y, color.current)
+            lastPos.current = w
+            sessionRef.current?.sendPresence(w.x, w.y, color.current,
+              [...(editorRef.current?.selected ?? [])])
           }}
           onWheel={(e) => {
             const r = rendererRef.current

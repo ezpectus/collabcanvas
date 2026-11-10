@@ -97,6 +97,18 @@ export function computeResize(
   }
 }
 
+/** AABB → rotated quad corners [TL,TR,BR,BL] in world coords. */
+export function quadOf(b: BBox, rotDeg: number): { x: number; y: number }[] {
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
+  const r = (rotDeg * Math.PI) / 180
+  const c = Math.cos(r), s = Math.sin(r)
+  return [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]]
+    .map(([x, y]) => ({
+      x: cx + (x! - cx) * c - (y! - cy) * s,
+      y: cy + (x! - cx) * s + (y! - cy) * c,
+    }))
+}
+
 export const intersects = (a: BBox, b: BBox): boolean =>
   !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1)
 
