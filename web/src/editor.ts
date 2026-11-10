@@ -22,6 +22,7 @@ export type Quad = { x: number; y: number }[]
 
 interface Drag {
   mode: 'move' | 'resize' | 'rotate' | 'create' | 'marquee' | 'pan-hint'
+    | 'point'
   startX: number
   startY: number
   /** orig props per dragged object — deltas apply to these */
@@ -166,8 +167,14 @@ export class Editor {
   handlePoints(): { x: number; y: number }[] {
     if (this.selected.size !== 1) return []
     const o = this.find([...this.selected][0]!)
-    if (!o || (o.kind !== 'rect' && o.kind !== 'ellipse'
-        && o.kind !== 'text' && o.kind !== 'image')) return []
+    if (!o) return []
+    // T-27: a selected line shows its 2 endpoints — draggable, the only
+    // reshape a segment needs. Path keeps no handles (point set).
+    if (o.kind === 'line')
+      return [{ x: num(o.props, 'x1'), y: num(o.props, 'y1') },
+              { x: num(o.props, 'x2'), y: num(o.props, 'y2') }]
+    if (o.kind !== 'rect' && o.kind !== 'ellipse'
+        && o.kind !== 'text' && o.kind !== 'image') return []
     const b = boundsOf(o)
     if (!b) return []
     const q = quadOf(b, num(o.props, 'rot'))
@@ -187,7 +194,8 @@ export class Editor {
     if (hi >= 0) {
       const o = this.find([...this.selected][0]!)!
       this.drag = {
-        mode: shift && hi === 4 ? 'rotate' : 'resize',
+        mode: o.kind === 'line' ? 'point'
+          : shift && hi === 4 ? 'rotate' : 'resize',
         startX: wx, startY: wy,
         orig: new Map([[o.id, { ...o.props }]]),
         center: shift && hi === 4
@@ -258,6 +266,14 @@ export class Editor {
       this.marquee = { x0: Math.min(d.startX, wx), y0: Math.min(d.startY, wy),
                        x1: Math.max(d.startX, wx), y1: Math.max(d.startY, wy) }
       this.redraw()
+      return
+    }
+
+    if (d.mode === 'point') {
+      // T-27: endpoint drag — handle 0 = (x1,y1), handle 1 = (x2,y2).
+      const [kx, ky] = d.handle === 0 ? ['x1', 'y1'] : ['x2', 'y2']
+      for (const [oid] of d.orig)
+        this.patchThrottled(oid, { [kx]: wx, [ky]: wy })
       return
     }
 
@@ -408,6 +424,32 @@ export class Editor {
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
     if (key === ']') { this.reorder(1); return }
     if (key === '[') { this.reorder(-1); return }
+    // T-27: arrow nudge — 1wu, Shift = 10wu. One Patch per object,
+    // one undo entry covering the whole selection.
+    const arrow: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    }
+    const a = arrow[key]
+    if (a && this.selected.size) {
+      const dx = a[0] * (shift ? 10 : 1), dy = a[1] * (shift ? 10 : 1)
+      const inv: WireOp[] = [], fwd: WireOp[] = []
+      for (const oid of this.selected) {
+        const o = this.find(oid)
+        if (!o) continue
+        const flush: Record<string, unknown> = {}
+        for (const k of ['x', 'y', 'x1', 'y1', 'x2', 'y2'])
+          if (o.props[k] !== undefined)
+            flush[k] = num(o.props, k) + (k[0] === 'x' ? dx : dy)
+        if (o.props['points'] !== undefined)
+          flush['points'] = (o.props['points'] as { x: number; y: number }[])
+            .map((p) => ({ x: p.x + dx, y: p.y + dy }))
+        inv.push({ type: 'Patch', payload: { id: oid, props: { ...o.props } } })
+        fwd.push({ type: 'Patch', payload: { id: oid, props: flush } })
+        this.session.submit('Patch', { id: oid, props: flush })
+      }
+      if (fwd.length) this.recordUndo(inv, fwd)
+      this.redraw()
+    }
   }
 
   /** Ctrl+D: clone each selected object at +20/+20, topmost z. */

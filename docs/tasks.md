@@ -577,3 +577,8 @@ object + viewport rect; docBounds cache theo model.version. Mặc
 ## T-26 · Auth + share-права · `todo` · L (сознательно отложено)
 Сейчас docId=секрет; /docs перечисляет всё. Нужен юзер-учёт —
 до этого вся раздача прав театр.
+
+## T-27 · Line endpoints + arrow nudge · `review` · XS
+Vá lỗ hổng UX thật (không phải feature bịa): line vẽ xong không
+reshape được — giờ 2 endpoint draggable. Arrows nudge 1wu
+(Shift=10) cho mọi selection — chuẩn editor. Undo-aware cả hai.
