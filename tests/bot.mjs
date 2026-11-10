@@ -607,7 +607,9 @@ CM.conn.on('comment', (m) => cGot.push(m))
 const cRec = await CM.conn.invoke('AddComment', OWN9, 'hello canvas')
 ok('comments: add returns a record', !!cRec && cRec.id?.length > 0)
 ok('comments: add broadcast lands',
-  cGot.some((m) => m.kind === 'add' && m.id === cRec.id))
+  !!(await waitFor(() =>
+    cGot.some((m) => m.kind === 'add' && m.id === cRec.id),
+    2000, 'add broadcast')))
 const cList = await (await authed(
   `/docs/${OWN9}/comments`, reg10.token)).json()
 ok('comments: REST list has the row',
@@ -625,7 +627,9 @@ ok('comments: admin+ deletes a stranger\'s row',
   (await CX.conn.invoke('DeleteComment', OWN9, cRec.id)
     .then(() => 'ok').catch(e => String(e))) === 'ok')
 ok('comments: del broadcast lands',
-  cGot.some((m) => m.kind === 'del' && m.id === cRec.id))
+  !!(await waitFor(() =>
+    cGot.some((m) => m.kind === 'del' && m.id === cRec.id),
+    2000, 'del broadcast')))
 const cDel = client(u8, reg8.token) // editor, not author
 await cDel.start()
 await cDel.join(0, OWN9)
