@@ -599,7 +599,7 @@ Verified live: DELETE -> 204, id gone from /docs.
 Alt+arrows — align к крайней грани выделения; Alt+H/Alt+V — центры.
 Box-kinds only (у line/path нет x/y-якоря); выравнивание по AABB —
 для rot≠0 quad'а, что визуально корректно. Undo-aware. Distribute
-(равные промежутки) не сделан — следующий шаг, если нужен.
+тоже сделан (Alt+Shift+H/V — равные гэпы, крайние якорятся, `1ba0c3c`).
 
 ## T-34 · Multi-select group resize · `review` · S
 Один BR-хендл на union-box при size>=2; scale TL-anchored,
