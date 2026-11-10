@@ -20,7 +20,12 @@ public sealed record JoinResult(
     long LastSeq,
     JsonElement? Snapshot,
     long SnapshotSeq,
-    IReadOnlyList<OpBroadcast> Ops);
+    /// Server-resolved role for this connection (T-26): the client
+    /// uses it to grey out tools it can't use — never to grant.
+    IReadOnlyList<OpBroadcast> Ops,
+    /// Server-resolved role for this connection (T-26): the client
+    /// uses it to grey out tools it can't use — never to grant.
+    string? Role = null);
 
 /// <summary>client → server: one operation. clientId+clientSeq is the
 /// idempotency key for client retries (T-1 §5).</summary>

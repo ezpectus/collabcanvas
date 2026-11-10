@@ -21,7 +21,8 @@ public sealed class DocumentHub(
     IOpJournalFactory journals,
     OpRateLimiter opLimit,
     StackExchange.Redis.IConnectionMultiplexer redis,
-    CollabCanvas.Api.Auth.UserStore users) : Hub
+    CollabCanvas.Api.Auth.UserStore users,
+    CollabCanvas.Api.Auth.MembershipStore members) : Hub
 {
     /// T-26: resolve the SignalR access_token once at connect; the
     /// login becomes the trusted presence name (Name in PresenceUpdate
@@ -46,8 +47,27 @@ public sealed class DocumentHub(
         await base.OnConnectedAsync();
     }
 
+    /// T-26 stage 2: the connection's role — resolved uid's doc
+    /// membership, or "legacy editor" when the doc is unowned.
+    /// Guests get a role only on unowned docs (link grants = stage 3).
+    private async Task<CollabCanvas.Api.Auth.RoomRole?> EffectiveRole(
+        string docId)
+    {
+        if (!await members.IsOwnedAsync(docId))
+            return CollabCanvas.Api.Auth.RoomRole.Editor; // legacy open
+        return Context.Items["login"] is string login
+            ? await members.RoleOfAsync(docId, login)
+            : null;
+    }
+
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
+        // Owned doc, no membership → denied. HubException surfaces as
+        // an invoke rejection on the client ("forbidden" reason text).
+        var role = await EffectiveRole(req.DocId);
+        if (role is null)
+            throw new HubException("forbidden: members only");
+
         var room = rooms.GetOrCreate(req.DocId);
         // T-19: index the doc for the /docs listing. Fire-and-forget —
         // a Redis outage degrades discovery, never the join itself.
@@ -59,7 +79,7 @@ public sealed class DocumentHub(
         {
             var join = room.Join(req.ClientId, req.LastSeq);
             await Clients.Caller.SendAsync("presence-state", room.Presence.Current());
-            return join;
+            return join with { Role = CollabCanvas.Api.Auth.MembershipStore.Name(role.Value) };
         }
 
         // Non-owner: answer from the durable journal directly.
@@ -70,13 +90,15 @@ public sealed class DocumentHub(
             var tail = store.ReadSince(req.LastSeq);
             var lastSeq = Math.Max(snap?.Seq ?? 0,
                 tail.Count > 0 ? tail[^1].Seq : 0);
-            return new JoinResult(req.DocId, lastSeq, null, snap?.Seq ?? 0, tail);
+            return new JoinResult(req.DocId, lastSeq, null, snap?.Seq ?? 0,
+                tail, CollabCanvas.Api.Auth.MembershipStore.Name(role.Value));
         }
         var sinceSnap = store.ReadSince(snap?.Seq ?? 0);
         return new JoinResult(req.DocId,
             Math.Max(snap?.Seq ?? 0, sinceSnap.Count > 0 ? sinceSnap[^1].Seq : 0),
             snap is null ? null : System.Text.Json.JsonDocument.Parse(snap.Json).RootElement,
-            snap?.Seq ?? 0, sinceSnap);
+            snap?.Seq ?? 0, sinceSnap,
+            CollabCanvas.Api.Auth.MembershipStore.Name(role.Value));
     }
 
     public async Task LeaveDocument(string docId) =>
@@ -89,6 +111,11 @@ public sealed class DocumentHub(
         // never mint ops at network speed.
         if (!opLimit.Allow(Context.ConnectionId, DateTimeOffset.UtcNow))
             return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: "rate-limited");
+        // Per-op role check (T-26): also covers revocation — a removed
+        // member's live socket stops mutating on the very next op.
+        if (await EffectiveRole(op.DocId) is not { } r ||
+            r < CollabCanvas.Api.Auth.RoomRole.Editor)
+            return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: "forbidden");
         if (OpValidator.Validate(op) is { } why)
             return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: $"invalid: {why}");
 
@@ -111,6 +138,9 @@ public sealed class DocumentHub(
 
     public async Task Presence(PresenceUpdate update)
     {
+        // Guests can't paint cursors on owned docs they can't even
+        // join (viewers/members can — presence is read-only by nature).
+        if (await EffectiveRole(update.DocId) is null) return;
         var room = rooms.GetOrCreate(update.DocId);
         // Tracker stores every update (join snapshot stays fresh) and
         // rate-limits the fanout — a spammy client can't flood the room.

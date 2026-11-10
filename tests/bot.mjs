@@ -46,14 +46,14 @@ function client(name, token) {
     console.log(`dbg ${name} closed`, e ? String(e).slice(0, 90) : 'clean'))
   conn.on('presence-state', (s) => { c.presenceState = s })
   conn.on('presence-left', (l) => c.presence.push({ left: l }))
-  c.submit = (type, payload) =>
+  c.submit = (type, payload, doc = DOC) =>
     conn.invoke('SubmitOp', {
-      docId: DOC, clientId: name, clientSeq: ++c.clientSeq, type, payload,
+      docId: doc, clientId: name, clientSeq: ++c.clientSeq, type, payload,
     })
   c.submitAs = (type, payload, clientSeq) =>
     conn.invoke('SubmitOp', { docId: DOC, clientId: name, clientSeq, type, payload })
-  c.join = (lastSeq = 0) =>
-    conn.invoke('JoinDocument', { docId: DOC, clientId: name, lastSeq })
+  c.join = (lastSeq = 0, doc = DOC) =>
+    conn.invoke('JoinDocument', { docId: doc, clientId: name, lastSeq })
   c.start = () => conn.start()
   return c
 }
@@ -211,6 +211,109 @@ ok('auth: presence name = server login, not claimed',
   seenU?.update?.name === botLogin,
   `seen=${JSON.stringify(seenU?.update ?? null)}`)
 await U.conn.stop(); await W.conn.stop()
+
+// --- T-26 stage 2: membership + roles --------------------------------------------------
+// Owned doc (POST /docs by an authed user): members get roles, the
+// rest of the world is denied. Unowned docs stay legacy-open —
+// everything above ran anonymously and kept passing.
+const u2 = `v_${Date.now().toString(36)}`, u3 = `e_${Date.now().toString(36)}`
+const reg2 = await (await authPost('register',
+  { login: u2, password: 'secretpw' })).json()
+const reg3 = await (await authPost('register',
+  { login: u3, password: 'secretpw' })).json()
+const authed = (path, tk, init = {}) => fetch(`${API}${path}`, {
+  ...init, headers: { 'Content-Type': 'application/json',
+    Authorization: `Bearer ${tk}`, ...(init.headers ?? {}) } })
+
+// Owned doc create → creator is owner.
+const owned = await (await authed('/docs', token, { method: 'POST' })).json()
+const OWN = owned.id
+ok('authz: authed POST /docs creates owned doc',
+  owned.role === 'owner' && OWN.length >= 8, `id=${OWN}`)
+
+// Guest join → rejected (invoke throws on HubException).
+const G = client('bot-guest')
+await G.start()
+const guestJoin = await G.join(0, OWN).catch(e => `denied:${e.message}`)
+ok('authz: guest join on owned doc denied',
+  String(guestJoin).includes('forbidden'), String(guestJoin).slice(0, 60))
+
+// Authed non-member → also denied.
+const N = client(u2, reg2.token)
+await N.start()
+const nonJoin = await N.join(0, OWN).catch(e => `denied:${e.message}`)
+ok('authz: non-member join denied',
+  String(nonJoin).includes('forbidden'), String(nonJoin).slice(0, 60))
+
+// Guest op on owned doc → forbidden ack (not an error — a denial).
+const gAck = await G.submit('Create',
+  { id: 'g1', kind: 'rect', z: 'a1', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('authz: guest op forbidden', gAck.accepted === false &&
+  gAck.reason === 'forbidden', gAck.reason)
+
+// Owner seats viewer → viewer joins with role, ops denied.
+ok('authz: owner seats viewer', (await authed(`/docs/${OWN}/members`,
+  token, { method: 'POST',
+    body: JSON.stringify({ login: u2, role: 'viewer' }) })).status === 204)
+const vJoin = await N.join(0, OWN)
+ok('authz: viewer joins with role', vJoin.role === 'viewer', vJoin.role)
+const vAck = await N.submit('Create',
+  { id: 'v1', kind: 'rect', z: 'a1', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('authz: viewer op denied (server, not UI)', vAck.accepted === false &&
+  vAck.reason === 'forbidden', vAck.reason)
+
+// Promote to editor → ops now pass — same socket, no rejoin.
+ok('authz: owner promotes to editor', (await authed(`/docs/${OWN}/members`,
+  token, { method: 'POST',
+    body: JSON.stringify({ login: u2, role: 'editor' }) })).status === 204)
+const eAck = await N.submit('Create',
+  { id: 'e1', kind: 'rect', z: 'a2', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('authz: editor op accepted', eAck.accepted === true, eAck.reason)
+
+// Revoke on a LIVE socket: remove member → next op forbidden.
+ok('authz: owner revokes editor', (await authed(`/docs/${OWN}/members/${u2}`,
+  token, { method: 'DELETE' })).status === 204)
+const rAck = await N.submit('Create',
+  { id: 'r1', kind: 'rect', z: 'a3', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('authz: revoked member denied on live socket',
+  rAck.accepted === false && rAck.reason === 'forbidden', rAck.reason)
+
+// Admin powers: seat admin; admin adds editor but can't seat admin.
+ok('authz: owner seats admin', (await authed(`/docs/${OWN}/members`,
+  token, { method: 'POST',
+    body: JSON.stringify({ login: u3, role: 'admin' }) })).status === 204)
+ok('authz: admin adds editor', (await authed(`/docs/${OWN}/members`,
+  reg3.token, { method: 'POST',
+    body: JSON.stringify({ login: u2, role: 'editor' }) })).status === 204)
+ok('authz: admin cannot seat another admin',
+  (await authed(`/docs/${OWN}/members`, reg3.token, { method: 'POST',
+    body: JSON.stringify({ login: 'ghost', role: 'admin' }) }))
+    .status === 403)
+ok('authz: nobody mints owner via members endpoint',
+  (await authed(`/docs/${OWN}/members`, token, { method: 'POST',
+    body: JSON.stringify({ login: u2, role: 'owner' }) }))
+    .status === 400)
+
+// Discovery + audit: owned doc hidden from strangers, open to members.
+const guestDocs = await (await fetch(`${API}/docs`)).json()
+ok('authz: /docs hides owned doc from guest',
+  !guestDocs.includes(OWN), `n=${guestDocs.length}`)
+const memberDocs = await (await authed('/docs', reg3.token)).json()
+ok('authz: /docs shows owned doc to member', memberDocs.includes(OWN))
+ok('authz: /ops denied to stranger',
+  (await fetch(`${API}/ops?doc=${OWN}`)).status === 403)
+ok('authz: /ops readable by member',
+  (await authed(`/ops?doc=${OWN}&n=5`, reg3.token)).status === 200)
+
+// Delist: stranger 403, owner 204 (reversible delist, journal lives).
+ok('authz: DELETE /docs denied to stranger',
+  (await fetch(`${API}/docs/${OWN}`, { method: 'DELETE' }))
+    .status === 403)
+ok('authz: DELETE /docs allowed for owner',
+  (await authed(`/docs/${OWN}`, token, { method: 'DELETE' }))
+    .status === 204)
+
+await G.conn.stop(); await N.conn.stop()
 
 // --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
 const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()
