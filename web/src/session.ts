@@ -36,11 +36,12 @@ export class Session {
   onChange: (() => void) | null = null
   onPresence: (() => void) | null = null
 
-  async join(docId: string, clientId: string, url = '/hubs/document'): Promise<void> {
+  async join(docId: string, clientId: string, url = '/hubs/document',
+    token?: string | null): Promise<void> {
     this.docId = docId
     this.clientId = clientId
     const conn = new signalR.HubConnectionBuilder()
-      .withUrl(url)
+      .withUrl(url, token ? { accessTokenFactory: () => token } : {})
       // Reconnect storm handling (T-10): exp backoff + full jitter —
       // a server restart drops ALL clients at once; synchronized
       // retries would stampede it back down.

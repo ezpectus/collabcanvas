@@ -40,6 +40,8 @@ export interface PresenceUpdate {
   cursor: { x: number; y: number }
   selection: string[]
   color: string
+  /** Server-owned login (T-26) — absent for guests. */
+  name?: string
 }
 
 export interface PresenceBroadcast {

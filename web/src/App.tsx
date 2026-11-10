@@ -275,6 +275,34 @@ export default function App() {
   // canvas clicking alone can't locate things; z-sorted list can.
   const [showLayers, setShowLayers] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  // T-26 stage 1: session token in localStorage — survives reload,
+  // guest = no token (legacy editor; roles land in stage 2).
+  const [token, setToken] = useState(
+    () => localStorage.getItem('cc_token'))
+  const [login, setLogin] = useState(
+    () => localStorage.getItem('cc_login'))
+  const [authErr, setAuthErr] = useState('')
+  const doAuth = useCallback(async (
+    path: 'login' | 'register', l: string, p: string) => {
+    try {
+      const r = await fetch(`/auth/${path}`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: l, password: p }) })
+      if (!r.ok) { setAuthErr(r.status === 409 ? 'login taken'
+        : r.status === 401 ? 'wrong login or password'
+        : 'login 2-32 [a-z0-9_-], pass >= 6'); return }
+      const d = await r.json() as { token: string; login: string }
+      localStorage.setItem('cc_token', d.token)
+      localStorage.setItem('cc_login', d.login)
+      setToken(d.token); setLogin(d.login); setAuthErr('')
+    } catch { setAuthErr('auth request failed') }
+  }, [])
+  const logout = useCallback(async () => {
+    await fetch('/auth/logout', { method: 'POST',
+      headers: { Authorization: `Bearer ${token}` } }).catch(() => {})
+    localStorage.removeItem('cc_token'); localStorage.removeItem('cc_login')
+    setToken(null); setLogin(null)
+  }, [token])
   const [paintMode, setPaintMode] = useState<'fill' | 'stroke'>('fill')
   const pickFromLayers = useCallback((id: string) => {
     const ed = editor()
@@ -301,7 +329,7 @@ export default function App() {
       const s = session()
       s.onChange = markDirty
       s.onPresence = markDirty
-      await s.join(docId, clientId.current)
+      await s.join(docId, clientId.current, '/hubs/document', token)
       setState('joined')
       markDirty()
       void refreshDocs()
@@ -309,7 +337,7 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e))
       setState('error')
     }
-  }, [markDirty, docId, refreshDocs])
+  }, [markDirty, docId, refreshDocs, token])
 
   /** T-19: hop to another doc on the same connection; ?doc= follows. */
   const switchDoc = useCallback(async (next: string) => {
@@ -421,6 +449,29 @@ export default function App() {
         <button onClick={() => void connect()} disabled={state === 'connecting'}>
           Join {docId}
         </button>
+        {login ? (
+          <>
+            <span className="pill" title="signed in">👤 {login}</span>
+            <button className="tool" onClick={() => void logout()}>
+              logout</button>
+          </>
+        ) : (
+          <>
+            <input className="insp-input" style={{ width: 90 }}
+              placeholder="login" id="auth-login" />
+            <input className="insp-input" style={{ width: 90 }}
+              placeholder="pass" type="password" id="auth-pass" />
+            <button className="tool" onClick={() => void doAuth('login',
+              (document.getElementById('auth-login') as HTMLInputElement).value,
+              (document.getElementById('auth-pass') as HTMLInputElement).value)}>
+              sign in</button>
+            <button className="tool" onClick={() => void doAuth('register',
+              (document.getElementById('auth-login') as HTMLInputElement).value,
+              (document.getElementById('auth-pass') as HTMLInputElement).value)}>
+              register</button>
+          </>
+        )}
+        {authErr && <span className="pill error">{authErr}</span>}
         {state === 'joined' && (
           <>
             <select className="docpick" value={docId}

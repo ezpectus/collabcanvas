@@ -202,7 +202,7 @@ export class Renderer {
       ctx.fillStyle = u.color
       ctx.fill()
       ctx.font = `${12 / v.scale}px sans-serif`
-      ctx.fillText(u.clientId, c.x + 8 / v.scale, c.y - 4 / v.scale)
+      ctx.fillText(u.name ?? u.clientId, c.x + 8 / v.scale, c.y - 4 / v.scale)
     }
 
     // T-25: minimap — screen-space overlay (separate transform).
