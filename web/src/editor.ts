@@ -226,7 +226,8 @@ export class Editor {
         center: null, moved: false, handle: -1,
       }
     } else {
-      this.selected.clear()
+      // Shift+marquee is additive — same convention as shift-click.
+      if (!shift) this.selected.clear()
       this.marquee = { x0: wx, y0: wy, x1: wx, y1: wy }
       this.drag = { mode: 'marquee', startX: wx, startY: wy,
                     orig: new Map(), center: null, moved: false, handle: -1 }
