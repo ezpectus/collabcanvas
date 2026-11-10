@@ -431,8 +431,8 @@ export class Editor {
       this.redraw(); return
     }
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
-    if (key === ']') { this.reorder(1); return }
-    if (key === '[') { this.reorder(-1); return }
+    if (key === ']') { this.stepReorder(1, ctrl); return }
+    if (key === '[') { this.stepReorder(-1, ctrl); return }
     // T-27: arrow nudge — 1wu, Shift = 10wu. One Patch per object,
     // one undo entry covering the whole selection.
     const arrow: Record<string, [number, number]> = {
@@ -489,6 +489,31 @@ export class Editor {
     if (fwd.length) this.recordUndo(inv, fwd)
     this.selected.clear()
     for (const id of created) this.selected.add(id)
+    this.redraw()
+  }
+
+  /** ] / [ = front/back; Ctrl+] / Ctrl+[ = one layer step (Figma
+   *  convention). Step only for single selection — a multi-object
+   *  block would need relative-order preservation (falls back to
+   *  front/back, honest edge). */
+  private stepReorder(dir: 1 | -1, step: boolean): void {
+    const objs = this.objects()
+    if (!step || this.selected.size !== 1) { this.reorder(dir); return }
+    const i = objs.findIndex((o) => this.selected.has(o.id))
+    if (i < 0) return
+    const o = objs[i]!
+    const up = i + dir
+    if (up < 0 || up >= objs.length) return // already at edge
+    const beyond = objs[up + dir]
+    const z = dir > 0
+      ? beyond ? FractionalIndex.between(objs[up]!.z, beyond.z)
+               : FractionalIndex.after(objs[up]!.z)
+      : beyond ? FractionalIndex.between(beyond.z, objs[up]!.z)
+               : FractionalIndex.before(objs[up]!.z)
+    this.session.submit('Reorder', { id: o.id, z })
+    this.recordUndo(
+      [{ type: 'Reorder', payload: { id: o.id, z: o.z } }],
+      [{ type: 'Reorder', payload: { id: o.id, z } }])
     this.redraw()
   }
 
