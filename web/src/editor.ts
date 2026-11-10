@@ -206,6 +206,7 @@ export class Editor {
             q[2]!, mid(q[2]!, q[3]!), q[3]!, mid(q[3]!, q[0]!),
             { x: top.x - Math.sin(rotRad) * 14,   // local-up rotated
               y: top.y - Math.cos(rotRad) * 14 }]
+  }
 
   mouseDown(wx: number, wy: number, scale = 1, shift = false): void {
     wx = this.grid(wx); wy = this.grid(wy)
