@@ -22,7 +22,7 @@ export type Quad = { x: number; y: number }[]
 
 interface Drag {
   mode: 'move' | 'resize' | 'rotate' | 'create' | 'marquee' | 'pan-hint'
-    | 'point' | 'gresize'
+    | 'point' | 'gresize' | 'grotate'
   startX: number
   startY: number
   /** orig props per dragged object — deltas apply to these */
@@ -211,13 +211,26 @@ export class Editor {
     if (hi >= 0) {
       const o = this.find([...this.selected][0]!)!
       this.drag = {
-        mode: this.selected.size >= 2 ? 'gresize'
+        mode: this.selected.size >= 2
+            ? (shift ? 'grotate' : 'gresize')
           : o.kind === 'line' ? 'point'
           : shift && hi === 4 ? 'rotate' : 'resize',
         startX: wx, startY: wy,
         orig: new Map([...this.selected]
           .map((id) => [id, { ...this.find(id)!.props }])),
-        center: shift && hi === 4
+        center: this.selected.size >= 2
+          ? (() => { // grotate pivot = union-bbox center
+              let u: BBox | null = null
+              for (const id of this.selected) {
+                const b = boundsOf(this.find(id)!)
+                if (b) u = u ? { x0: Math.min(u.x0, b.x0),
+                                 y0: Math.min(u.y0, b.y0),
+                                 x1: Math.max(u.x1, b.x1),
+                                 y1: Math.max(u.y1, b.y1) } : b
+              }
+              return u ? { x: (u.x0 + u.x1) / 2, y: (u.y0 + u.y1) / 2 } : null
+            })()
+          : shift && hi === 4
           ? { x: (boundsOf(o)!.x0 + boundsOf(o)!.x1) / 2,
               y: (boundsOf(o)!.y0 + boundsOf(o)!.y1) / 2 }
           : null,
@@ -335,12 +348,46 @@ export class Editor {
       return
     }
 
-    if (d.mode === 'rotate' && d.center) {
+    if ((d.mode === 'rotate' || d.mode === 'grotate') && d.center) {
       const a0 = Math.atan2(d.startY - d.center.y, d.startX - d.center.x)
       const a1 = Math.atan2(wy - d.center.y, wx - d.center.x)
       const deg = ((a1 - a0) * 180) / Math.PI
-      for (const [oid, orig] of d.orig)
-        this.patchThrottled(oid, { rot: (num(orig, 'rot') + deg + 360) % 360 })
+      if (d.mode === 'rotate') {
+        for (const [oid, orig] of d.orig)
+          this.patchThrottled(oid, { rot: (num(orig, 'rot') + deg + 360) % 360 })
+        return
+      }
+      // grotate: every object swings around the union center; boxes
+      // also accumulate their own rot, line/path geometry rotates
+      // point-wise (they have no rot prop). rad precomputed once.
+      const rad = (deg * Math.PI) / 180, cs = Math.cos(rad), sn = Math.sin(rad)
+      const c = d.center
+      const spin = (px: number, py: number) => ({
+        x: c.x + (px - c.x) * cs - (py - c.y) * sn,
+        y: c.y + (px - c.x) * sn + (py - c.y) * cs,
+      })
+      for (const [oid, orig] of d.orig) {
+        const o = this.find(oid)
+        if (!o) continue
+        if (o.kind === 'line') {
+          const p1 = spin(num(orig, 'x1'), num(orig, 'y1'))
+          const p2 = spin(num(orig, 'x2'), num(orig, 'y2'))
+          this.patchThrottled(oid, { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y })
+        } else if (orig['points'] !== undefined) {
+          this.patchThrottled(oid, {
+            points: (orig['points'] as { x: number; y: number }[])
+              .map((p) => spin(p.x, p.y)),
+          })
+        } else if (orig['x'] !== undefined) {
+          const b = boundsOf({ ...o, props: orig })!
+          const nc = spin((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2)
+          this.patchThrottled(oid, {
+            x: nc.x - (b.x1 - b.x0) / 2,
+            y: nc.y - (b.y1 - b.y0) / 2,
+            rot: (num(orig, 'rot') + deg + 360) % 360,
+          })
+        }
+      }
       return
     }
 
