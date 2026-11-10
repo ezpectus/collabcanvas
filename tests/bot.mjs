@@ -170,6 +170,21 @@ await B.conn.stop()
 await C.conn.stop()
 await A.conn.stop()
 
+// --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
+const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()
+ok('ops endpoint: journal tail readable',
+  tailOps.length > 0 && typeof tailOps.at(-1).seq === 'number',
+  `tail=${tailOps.length}`)
+ok('ops endpoint: tail ends near last seq',
+  tailOps.at(-1).seq >= (A.ops.at(-1)?.seq ?? 0) - 1)
+
+const del = await fetch(`${API}/docs/${encodeURIComponent(DOC)}`,
+  { method: 'DELETE' })
+ok('unlist: DELETE accepted', del.status === 204, `status=${del.status}`)
+const listAfter = await (await fetch(`${API}/docs`)).json()
+ok('unlist: doc gone from /docs (bot self-cleans)',
+  !listAfter.includes(DOC))
+
 console.log(failures === 0
   ? `\n${tag}: ALL SCENARIOS PASSED`
   : `\n${tag}: ${failures} check(s) FAILED`)
