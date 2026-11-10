@@ -289,3 +289,7 @@ Engine). Закрытые таски — `docs/done-log.md`.
   по тегу, undo-aware (коммит выше)
 - T-36: image blobs — Redis-store, upload editor+, GET member/
   grant, рендер-кэш, капы; /auth/login throttle 8/10мин (868c591)
+- fix-hunt: unlist auth header, atomic login throttle, doc-mint
+  quota, /ops grant, shareErr visibility (4aa7c3f); logout kills
+  live socket rights, nosniff blobs, presence name on dead token
+  (d672a59 + next)
