@@ -522,13 +522,42 @@ export class Editor {
     if (alt && this.selected.size >= 2) {
       const alignAxis: Record<string, 'x' | 'y'> =
         { ArrowLeft: 'x', ArrowRight: 'x', ArrowUp: 'y', ArrowDown: 'y' }
-      const axis = alignAxis[key] ?? (key === 'h' ? 'x' : key === 'v' ? 'y' : null)
+      const axis = alignAxis[key] ??
+        (key === 'h' || key === 'H' ? 'x' : key === 'v' || key === 'V' ? 'y' : null)
       if (axis) {
         const boxes = new Map<string, BBox>()
         for (const oid of this.selected) {
           const o = this.find(oid)
           const b = o && boundsOf(o)
           if (o && b && (o.props['x'] !== undefined)) boxes.set(oid, b)
+        }
+        if (boxes.size >= 2 && shift && (key === 'H' || key === 'V')) {
+          // Distribute: equal gaps, outer pair anchored in place.
+          const ord = [...boxes.entries()].sort((a, b) =>
+            (axis === 'x' ? a[1].x0 - b[1].x0 : a[1].y0 - b[1].y0))
+          const first = ord[0]![1], last = ord[ord.length - 1]![1]
+          const lo = axis === 'x' ? first.x0 : first.y0
+          const hi = axis === 'x' ? last.x1 : last.y1
+          const sizes = ord.map(([, b]) => axis === 'x' ? b.x1 - b.x0 : b.y1 - b.y0)
+          const gap = (hi - lo - sizes.reduce((s, v) => s + v, 0)) / (ord.length - 1)
+          const inv: WireOp[] = [], fwd: WireOp[] = []
+          let pos = lo
+          for (const [oid, b] of ord) {
+            const cur = axis === 'x' ? b.x0 : b.y0
+            const delta = pos - cur
+            if (delta !== 0) {
+              const o = this.find(oid)!
+              const k = axis === 'x' ? 'x' : 'y'
+              const props = { [k]: num(o.props, k) + delta }
+              inv.push({ type: 'Patch', payload: { id: oid, props: { ...o.props } } })
+              fwd.push({ type: 'Patch', payload: { id: oid, props } })
+              this.session.submit('Patch', { id: oid, props })
+            }
+            pos += (axis === 'x' ? b.x1 - b.x0 : b.y1 - b.y0) + gap
+          }
+          if (fwd.length) this.recordUndo(inv, fwd)
+          this.redraw()
+          return
         }
         if (boxes.size >= 2) {
           const edge = key === 'ArrowRight' || key === 'ArrowDown'
