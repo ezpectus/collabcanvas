@@ -477,7 +477,13 @@ export class Editor {
             if (d.localCreate) this.session.applyLocal('Delete', { id: oid })
             else this.session.submit('Delete', { id: oid })
           } else {
-            this.session.submit('Patch', { id: oid, props: { ...orig } })
+            // Revert only gesture keys — a remote op may have touched
+            // other props mid-drag; restoring them would stomp it.
+            const restore: Record<string, unknown> = {}
+            for (const k of ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2',
+              'rot', 'points'])
+              if (orig[k] !== undefined) restore[k] = orig[k]
+            this.session.submit('Patch', { id: oid, props: restore })
           }
         }
         this.redraw(); return
