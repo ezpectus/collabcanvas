@@ -84,6 +84,10 @@ app.MapPost("/docs", async (
 {
     var who = await users.ResolveAsync(Bearer(req));
     if (who is null) return Results.Unauthorized();
+    // Doc-mint quota: a scripted account shouldn't flood the
+    // discovery set and journal keys without bound.
+    if ((await members.DocsOfAsync(who.Value.login)).Length >= 200)
+        return Results.StatusCode(429);
     var id = Convert.ToBase64String(
         System.Security.Cryptography.RandomNumberGenerator.GetBytes(9))
         .Replace('+', '-').Replace('/', '_'); // 12-char url-safe id
@@ -212,7 +216,8 @@ app.MapGet("/ops", async (
         return Results.BadRequest("bad doc");
     // Ops carry document content — same access rule as joining:
     // owned doc → members only; unowned → open.
-    if (await CallerRole(members, users, req, doc) is null)
+    if (await CallerRole(members, users, req, doc,
+        req.Query["grant"]) is null)
         return Results.StatusCode(403);
     var take = Math.Clamp(n ?? 100, 1, 500);
     var ops = journals.ForDoc(doc).Tail(take).Select(o =>
@@ -372,8 +377,13 @@ app.MapPost("/auth/login", async (
     var db = redis.GetDatabase();
     if (token is null)
     {
-        await db.StringIncrementAsync(rlKey);
-        await db.KeyExpireAsync(rlKey, TimeSpan.FromMinutes(10));
+        // INCR+EXPIRE in one transaction — a Redis blip between the
+        // two calls would otherwise pin the counter (and the
+        // lockout) forever.
+        var tx = db.CreateTransaction();
+        _ = tx.StringIncrementAsync(rlKey);
+        _ = tx.KeyExpireAsync(rlKey, TimeSpan.FromMinutes(10));
+        await tx.ExecuteAsync();
         // Same answer for unknown user and wrong password — don't
         // leak which logins exist (enumeration hardening).
         return Results.Unauthorized();

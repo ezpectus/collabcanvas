@@ -532,6 +532,9 @@ export default function App() {
           </>
         )}
         {authErr && <span className="pill error">{authErr}</span>}
+        {/* Share/upload errors must be visible even with the
+            share panel closed — e.g. a failed image upload. */}
+        {shareErr && <span className="pill error">{shareErr}</span>}
         {state === 'joined' && (
           <>
             <select className="docpick" value={docId}
@@ -545,7 +548,8 @@ export default function App() {
             <button className="tool" title="remove this doc from the shared list"
               onClick={() => void (async () => {
                 // T-32: delist only — journal survives; rejoining re-adds.
-                await fetch(`/docs/${encodeURIComponent(docId)}`, { method: 'DELETE' })
+                await fetch(`/docs/${encodeURIComponent(docId)}`, { method: 'DELETE',
+                  headers: { Authorization: `Bearer ${token}` } })
                 void refreshDocs()
               })()}>unlist</button>
           </>
@@ -764,7 +768,6 @@ export default function App() {
                 <span className="hist-type">{r}</span>
               </div>
             ))}
-            {shareErr && <div className="pill error">{shareErr}</div>}
           </aside>
         )}
         {/* Empty-doc onboarding hint — a blank canvas otherwise
