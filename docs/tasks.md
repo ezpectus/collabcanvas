@@ -719,3 +719,15 @@ Ctrl+C пишет JSON выделения (kind=cc-objects), Ctrl+V читает
 empty-selection copy не затирает буфер. Locked не копируется
 (mutable()); копия несёт locked-проп — честно. Край: paste до
 первого mouseMove летит в world (0,0).
+
+## T-36 · Image blobs · `review` · M
+Redis-blob MVP (одно хранилище, без нового сервиса): `blob:{id}` +
+`blob:{id}:meta`, капы 5MB/50-на-док, типы png/jpeg/webp/gif.
+POST editor+; GET member-или-grant (img не шлёт хедеры → token/
+grant в query). CallerRole получил grant-вектор, member>link>
+legacy — пойман и починен баг: viewer-линк даунгрейдил бы члена.
+Рендерер: кэш, load-once, плейсхолдер, dirty-on-load; upload-
+кнопка → insertImage в центр вьюпорта с аспектом. Края честно:
+нет malware-скана, нет очистки блобов при удалении объекта/дока
+(утечка по капу), Redis-память за блобы — до S3/диска масштаб.
+Плюс закрыта дыра из T-26: /auth/login throttle 8/10мин → 429.

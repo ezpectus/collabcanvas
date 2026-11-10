@@ -287,3 +287,5 @@ Engine). Закрытые таски — `docs/done-log.md`.
 - T-27: doc meta + PATCH rename, owner/admin гейт, бот +4 (0b262bb)
 - T-35: группировка по тегам — ctrl+g/ctrl+shift+g, клик-селект
   по тегу, undo-aware (коммит выше)
+- T-36: image blobs — Redis-store, upload editor+, GET member/
+  grant, рендер-кэш, капы; /auth/login throttle 8/10мин (868c591)
