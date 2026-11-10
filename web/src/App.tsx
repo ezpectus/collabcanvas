@@ -79,13 +79,15 @@ function Inspector({ editor, model }: {
   if (!fields.length) return null
   if (o.kind === 'text')
     fields.push(['fontSize', num(o.props, 'fontSize', 16)])
+  fields.push(['opacity', num(o.props, 'opacity', 1)]) // all kinds
   return (
     <aside className="history-panel inspector-panel">
       <b>{o.kind} · {id.slice(0, 8)}</b>
       {fields.map(([k, v]) => (
         <div key={k} className="hist-row">
           <span className="hist-seq">{k}</span>
-          <input className="insp-input" type="number" step="1"
+          <input className="insp-input" type="number"
+            step={k === 'opacity' ? 0.05 : 1}
             // key+defaultValue: uncontrolled so typing doesn't fight
             // the wire echo; v in key remounts on remote/local prop
             // change so the panel never shows stale numbers.
@@ -94,7 +96,8 @@ function Inspector({ editor, model }: {
             disabled={!!o.props['locked']}
             onBlur={(e) => {
               const nv = parseFloat(e.target.value)
-              if (Number.isFinite(nv)) editor.applyProps(id, { [k]: nv })
+              if (Number.isFinite(nv)) editor.applyProps(id, {
+                [k]: k === 'opacity' ? Math.min(1, Math.max(0, nv)) : nv })
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()

@@ -303,6 +303,9 @@ export class Renderer {
 
 function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
   const p = o.props
+  // T-39: per-object opacity — plain prop, LWW-merged for free.
+  const alpha = num(p, 'opacity', 1)
+  if (alpha !== 1) ctx.globalAlpha = alpha
   const fill = str(p, 'fill', '#8892b0')
   const stroke = str(p, 'stroke', '')
   const rot = num(p, 'rot')
@@ -368,4 +371,5 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
     }
   }
   if (rot) ctx.restore()
+  if (alpha !== 1) ctx.globalAlpha = 1
 }
