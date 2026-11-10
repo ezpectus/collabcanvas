@@ -68,6 +68,7 @@ export function computeResize(
   handle: number, // index into [TL,T,TR,R,BR,B,BL,L] — [sx,sy] pairs
   dx: number, dy: number, // world-space drag delta
   aspect = false,
+  center = false, // Alt: scale around center instead of opposite edge
 ): { x: number; y: number; w: number; h: number } {
   const DIRS: [number, number][] = [
     [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
@@ -90,6 +91,7 @@ export function computeResize(
   const day = (-sy) * (h0 - h2) / 2
   const cr = Math.cos(rot), sr = Math.sin(rot)
   const cx0 = num(props, 'x') + w0 / 2, cy0 = num(props, 'y') + h0 / 2
+  if (center) return { x: cx0 - w2 / 2, y: cy0 - h2 / 2, w: w2, h: h2 }
   return {
     x: cx0 + dax * cr - day * sr - w2 / 2,
     y: cy0 + dax * sr + day * cr - h2 / 2,

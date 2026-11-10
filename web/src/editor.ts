@@ -295,7 +295,8 @@ export class Editor {
                   orig: new Map([[id, props]]), center: null, moved: false, handle: -1 }
   }
 
-  mouseMove(wx: number, wy: number, aspect = false, scale = 1): void {
+  mouseMove(wx: number, wy: number, aspect = false, scale = 1,
+    alt = false): void {
     const d = this.drag
     if (!d) return
     let dx = wx - d.startX
@@ -445,7 +446,7 @@ export class Editor {
         })
       } else if (d.mode === 'resize') {
         this.patchThrottled(oid,
-          computeResize(orig, d.handle, dx, dy, aspect))
+          computeResize(orig, d.handle, dx, dy, aspect, alt))
       } else if (d.mode === 'create') {
         if (d.localCreate) {
           const pts = orig['points'] as { x: number; y: number }[]

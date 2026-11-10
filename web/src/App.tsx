@@ -362,7 +362,7 @@ export default function App() {
               panDrag.current = { x: e.clientX, y: e.clientY }
             } else {
               editor().mouseMove(w.x, w.y, e.shiftKey,
-                rendererRef.current!.view.scale)
+                rendererRef.current!.view.scale, e.altKey)
             }
             lastPos.current = w
             sessionRef.current?.sendPresence(w.x, w.y, color.current,
