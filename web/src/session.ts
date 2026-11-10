@@ -97,25 +97,40 @@ export class Session {
       this.model.restore(res.snapshot as SnapshotObject[], res.snapshotSeq)
     for (const op of res.ops) this.model.apply(op)
 
-    for (const [cs, p] of this.pending) {
+    const replays = [...this.pending].map(([cs, p]) => {
       this.applyOptimistic(cs, p.type, p.payload)
-      void this.conn!.invoke<OpAck>('SubmitOp', this.wire(cs, p))
-        .then(() => this.pending.delete(cs))
-        .catch(() => {}) // still pending — next reconnect retries
-    }
+      return this.conn!.invoke<OpAck>('SubmitOp', this.wire(cs, p))
+        .then(ack => { this.pending.delete(cs); return ack?.accepted })
+        .catch(() => true) // still pending — next reconnect retries
+    })
+    // A denied replay ghosted the model — one more rejoin resyncs
+    // server truth and drops the phantom.
+    void Promise.all(replays).then(rs => {
+      if (rs.some(ok => ok === false)) void this.rejoin()
+    })
     this.onChange?.()
   }
 
   /** Optimistic apply + submit. Local state updates synchronously —
    * zero-latency feel; the server seq arrives with the echo. */
   submit(type: OpType, payload: Record<string, unknown>): void {
+    // Viewer gate (T-26 stage 4): one choke point covers every
+    // mutation path — gestures, keys, inspector, paste, undo.
+    // Cosmetic only; the server re-checks on every op anyway.
+    if (this.role === 'viewer') return
     const cs = ++this.clientSeq
     this.pending.set(cs, { type, payload })
     this.applyOptimistic(cs, type, payload)
     this.onChange?.()
     if (!this.conn) return // offline — rebase on reconnect
     void this.conn.invoke<OpAck>('SubmitOp', this.wire(cs, { type, payload }))
-      .then(() => this.pending.delete(cs))
+      .then(ack => {
+        this.pending.delete(cs)
+        // Denied (forbidden/invalid): the optimistic apply is already
+        // in the model — rejoin to let server truth overwrite it,
+        // otherwise the phantom object lingers locally forever.
+        if (ack && !ack.accepted) void this.rejoin()
+      })
       .catch(() => {}) // stays pending → resent after rejoin
   }
 

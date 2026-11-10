@@ -287,6 +287,40 @@ export default function App() {
   const [authErr, setAuthErr] = useState('')
   // T-26 stage 2: server-resolved role on the joined doc (cosmetic).
   const [role, setRole] = useState<string | null>(null)
+  // T-26 stage 4: share panel — mint grant links + seat members.
+  const [showShare, setShowShare] = useState(false)
+  const [shareErr, setShareErr] = useState('')
+  const [memberList, setMemberList] = useState<Record<string, string> | null>(null)
+  const canManage = role === 'owner' || role === 'admin'
+  const authedFetch = useCallback(async (path: string,
+    init?: RequestInit) => fetch(path, {
+      ...init, headers: { 'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } }),
+    [token])
+  const copyLink = useCallback(async (r: 'viewer' | 'editor') => {
+    try {
+      const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/links`,
+        { method: 'POST', body: JSON.stringify({ role: r }) })
+      if (!res.ok) { setShareErr(`link failed: ${res.status}`); return }
+      const { token: g } = await res.json() as { token: string }
+      await navigator.clipboard.writeText(
+        `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}&grant=${encodeURIComponent(g)}`)
+      setShareErr(`${r} link copied`)
+    } catch { setShareErr('link request failed') }
+  }, [authedFetch, docId])
+  const loadMembers = useCallback(async () => {
+    try {
+      const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/members`)
+      setMemberList(res.ok ? await res.json() as Record<string, string> : null)
+    } catch { setMemberList(null) }
+  }, [authedFetch, docId])
+  const addMember = useCallback(async (login: string, r: string) => {
+    const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/members`,
+      { method: 'POST', body: JSON.stringify({ login, role: r }) })
+    setShareErr(res.ok ? `${login} added` :
+      res.status === 400 ? 'no such login / bad role' : `add failed: ${res.status}`)
+    if (res.ok) void loadMembers()
+  }, [authedFetch, docId, loadMembers])
   const doAuth = useCallback(async (
     path: 'login' | 'register', l: string, p: string) => {
     try {
@@ -356,6 +390,9 @@ export default function App() {
   }, [docId, refreshDocs])
 
   useEffect(() => () => { void sessionRef.current?.stop() }, [])
+  useEffect(() => {
+    if (showShare && canManage) void loadMembers()
+  }, [showShare, canManage, loadMembers])
 
   // Tool hotkeys + Delete.
   useEffect(() => {
@@ -487,10 +524,8 @@ export default function App() {
               {docList.filter((d) => d !== docId).map((d) =>
                 <option key={d} value={d}>{d}</option>)}
             </select>
-            <button className="tool" onClick={() =>
-              void navigator.clipboard.writeText(
-                `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}`)
-            }>share</button>
+            <button className={showShare ? 'tool active' : 'tool'}
+              onClick={() => setShowShare(!showShare)}>share</button>
             <button className="tool" title="remove this doc from the shared list"
               onClick={() => void (async () => {
                 // T-32: delist only — journal survives; rejoining re-adds.
@@ -499,25 +534,27 @@ export default function App() {
               })()}>unlist</button>
           </>
         )}
-        {TOOLS.map((t) => (
-          <button key={t}
-            className={t === tool ? 'tool active' : 'tool'}
-            onClick={() => { editor().tool = t; setTool(t) }}>
-            {t}
-          </button>
-        ))}
-        <input type="color" className="swatch" title="brush color"
-          defaultValue="#3d5af1"
-          onChange={(e) => editor().applyColor(e.target.value,
-            paintMode === 'stroke')} />
-        <button className={paintMode === 'stroke' ? 'tool active' : 'tool'}
-          title="paint target: fill or stroke outline"
-          onClick={() => setPaintMode(
-            paintMode === 'stroke' ? 'fill' : 'stroke')}>
-          {paintMode}</button>
-        <button className="tool" title="no fill / no stroke (hollow)"
-          onClick={() => editor().applyColor('none',
-            paintMode === 'stroke')}>⊘</button>
+        {role !== 'viewer' && (<>
+          {TOOLS.map((t) => (
+            <button key={t}
+              className={t === tool ? 'tool active' : 'tool'}
+              onClick={() => { editor().tool = t; setTool(t) }}>
+              {t}
+            </button>
+          ))}
+          <input type="color" className="swatch" title="brush color"
+            defaultValue="#3d5af1"
+            onChange={(e) => editor().applyColor(e.target.value,
+              paintMode === 'stroke')} />
+          <button className={paintMode === 'stroke' ? 'tool active' : 'tool'}
+            title="paint target: fill or stroke outline"
+            onClick={() => setPaintMode(
+              paintMode === 'stroke' ? 'fill' : 'stroke')}>
+            {paintMode}</button>
+          <button className="tool" title="no fill / no stroke (hollow)"
+            onClick={() => editor().applyColor('none',
+              paintMode === 'stroke')}>⊘</button>
+        </>)}
         <button onClick={() => {
           // T-22: export — the canvas is already a bitmap; toDataURL
           // is the whole job. Remote cursors/handles are frame
@@ -640,14 +677,51 @@ export default function App() {
             )}
           </aside>
         )}
-        {state === 'joined' && <Inspector editor={editor()}
-          model={session().model} />}
+        {/* T-26 stage 4: viewer mode hides mutating controls — cosmetic;
+            session.submit() refuses ops for viewers server-side anyway. */}
+        {state === 'joined' && role !== 'viewer' && <Inspector
+          editor={editor()} model={session().model} />}
+        {state === 'joined' && role === 'viewer' && (
+          <div className="pill" style={{ position: 'absolute',
+            left: 12, bottom: 12 }}>view only</div>
+        )}
+        {showShare && canManage && state === 'joined' && (
+          <aside className="history-panel">
+            <b>Share</b>
+            <button className="tool" onClick={() => void copyLink('viewer')}>
+              copy view link</button>
+            <button className="tool" onClick={() => void copyLink('editor')}>
+              copy edit link</button>
+            <div className="hist-row" style={{ gap: 4 }}>
+              <input className="insp-input" id="share-login"
+                placeholder="login" style={{ width: 80 }} />
+              <select id="share-role" className="insp-input">
+                <option value="editor">editor</option>
+                <option value="viewer">viewer</option>
+                {role === 'owner' && <option value="admin">admin</option>}
+              </select>
+              <button className="tool" onClick={() => void addMember(
+                (document.getElementById('share-login') as HTMLInputElement).value,
+                (document.getElementById('share-role') as HTMLSelectElement).value)}>
+                add</button>
+            </div>
+            {memberList && Object.entries(memberList).map(([l, r]) => (
+              <div className="hist-row" key={l}>
+                <span className="hist-who">{l}</span>
+                <span className="hist-type">{r}</span>
+              </div>
+            ))}
+            {shareErr && <div className="pill error">{shareErr}</div>}
+          </aside>
+        )}
         {/* Empty-doc onboarding hint — a blank canvas otherwise
             gives no affordance. Hidden the moment anything exists. */}
         {state === 'joined' && !session().model.objectCount() && (
           <div className="empty-hint">
-            pick a tool above — <b>r</b>ect, <b>t</b>ext, <b>p</b>ath…
-            press <b>?</b> for shortcuts
+            {role === 'viewer'
+              ? 'nothing here yet — you have view-only access'
+              : <>pick a tool above — <b>r</b>ect, <b>t</b>ext, <b>p</b>ath…
+                  press <b>?</b> for shortcuts</>}
           </div>
         )}
         {showHelp && (
