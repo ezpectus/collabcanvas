@@ -4,9 +4,26 @@ A Figma-like multiplayer canvas, built as a study project: real-time
 co-editing on an infinite board — the way Figma actually does it, not
 the way textbooks say "use OT or CRDTs".
 
-**Stack:** .NET 8 + SignalR · Redis (op journal, pub/sub transport,
-presence, sessions, blobs) · React + TypeScript + Canvas 2D ·
+**Stack:** .NET 8 + SignalR · Redis · React + TypeScript + Canvas 2D ·
 docker-compose · Node 24 live test bot · xUnit.
+
+## Stack — every choice justified
+
+| Choice | Why it's here | Rejected |
+| --- | --- | --- |
+| **.NET 8 + SignalR** | One stateful room process IS the ordering point — SignalR gives groups, reconnect and invoke/ack without a hand-rolled WS layer | Raw WebSocket plumbing; a separate gateway service |
+| **Redis (one dep, four roles)** | Stream = op journal with MAXLEN · keys = snapshots/sessions/blobs · pub/sub = cross-instance transport · hashes/sets = memberships, links, comments | Postgres journal (write amplification), NATS/Kafka (a broker to babysit for one channel) |
+| **LWW + central seq** | A server that sees every write makes merge trivial: per-prop last-writer-wins converges by construction | OT / full CRDT — machinery for a problem the central server already removed |
+| **Fractional index (base-62)** | Deterministic z-order merge on every replica; strings never exhaust precision | float64 midpoints (die after ~50 inserts), integer reindex storms |
+| **Canvas 2D + quadtree** | 10k objects must not become 10k DOM nodes; cull + hit-test cost O(visible), not O(n) | SVG/DOM rendering; linear hit scans |
+| **Server sessions, no JWT** | Revocation per request — logout/revoke kills a live socket on the next op; bcrypt for passwords | JWT (can't revoke without a denylist), self-rolled crypto |
+| **Node 24 bot** | Native fetch/WebSocket + real `@microsoft/signalr` — the wire contract verified live, no browser needed | JSDOM tests that prove nothing about the wire |
+| **docker-compose** | Three services, one command, reproducible | k8s — ops overhead for zero gain at this scale |
+
+Deliberately **not** in the stack: a CRDT library, an ORM abstraction
+layer, S3/blob service (Redis is the honest MVP tier), a build
+pipeline beyond `dotnet`/`vite`. Everything added had to answer
+*what breaks without it*.
 
 ## How it works — one picture
 
