@@ -34,6 +34,7 @@ export class Renderer {
     private readonly getCursors: () => Iterable<PresenceUpdate>,
     private readonly getSelection: () => { x: number; y: number }[][],
     private readonly getMarquee: () => BBox | null,
+    private readonly getHandles: () => { x: number; y: number }[] = () => [],
   ) {}
 
   markDirty(): void { this.dirty = true }
@@ -173,9 +174,11 @@ export class Renderer {
     ctx.closePath()
     ctx.stroke()
     ctx.setLineDash([])
+    // T-16: all 8 handles on a single box-kind selection.
     const h = 8 / v.scale
     ctx.fillStyle = '#5f8dff'
-    ctx.fillRect(quad[2]!.x - h / 2, quad[2]!.y - h / 2, h, h)
+    for (const p of this.getHandles())
+      ctx.fillRect(p.x - h / 2, p.y - h / 2, h, h)
   }
 }
 

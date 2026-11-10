@@ -26,10 +26,17 @@ interface Drag {
   orig: Map<string, Record<string, unknown>>
   center: { x: number; y: number } | null // rotate pivot
   moved: boolean
+  /** T-16: which of the 8 handles grabbed (index into HANDLE_DIRS) */
+  handle: number
   localCreate?: { id: string; z: string }
 }
 
 const rad = (deg: number) => (deg * Math.PI) / 180
+
+/** Handle directions [sx,sy]: TL,T,TR,R,BR,B,BL,L — sx/sy say which
+ *  local axis a drag grows (1) or shrinks (-1) on. T-16. */
+const HANDLE_DIRS: [number, number][] = [
+  [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
 
 /** AABB → rotated quad corners around its center (rot degrees). */
 function quadOf(b: BBox, rotDeg: number): Quad {
@@ -101,32 +108,40 @@ export class Editor {
     return top ? FractionalIndex.after(top) : FractionalIndex.first()
   }
 
-  /** Bottom-right handle of a single selection, in world coords. */
-  private handlePos(scale: number): { x: number; y: number } | null {
-    if (this.selected.size !== 1) return null
+  /** T-16: the 8 handles of a single selected box-kind object, world
+   *  coords (corners + edge midpoints of the rotated quad). Line/path
+   *  get none — scaling a point set is a different op (honest edge). */
+  handlePoints(): { x: number; y: number }[] {
+    if (this.selected.size !== 1) return []
     const o = this.find([...this.selected][0]!)
-    const b = o && boundsOf(o)
-    if (!b) return null
-    void scale // handle size is taken in screen px by the caller's pad
-    return quadOf(b, num(o!.props, 'rot'))[2]! // BR corner
+    if (!o || (o.kind !== 'rect' && o.kind !== 'ellipse'
+        && o.kind !== 'text' && o.kind !== 'image')) return []
+    const b = boundsOf(o)
+    if (!b) return []
+    const q = quadOf(b, num(o.props, 'rot'))
+    const mid = (a: { x: number; y: number }, c: { x: number; y: number }) =>
+      ({ x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 })
+    return [q[0]!, mid(q[0]!, q[1]!), q[1]!, mid(q[1]!, q[2]!),
+            q[2]!, mid(q[2]!, q[3]!), q[3]!, mid(q[3]!, q[0]!)]
   }
 
   mouseDown(wx: number, wy: number, scale = 1, shift = false): void {
     if (this.tool !== 'select') { this.createStart(wx, wy); return }
 
-    const hp = this.handlePos(scale)
+    const hp = this.handlePoints()
     const tol = 8 / scale
-    if (hp && Math.abs(wx - hp.x) <= tol && Math.abs(wy - hp.y) <= tol) {
+    const hi = hp.findIndex(p => Math.abs(wx - p.x) <= tol && Math.abs(wy - p.y) <= tol)
+    if (hi >= 0) {
       const o = this.find([...this.selected][0]!)!
       this.drag = {
-        mode: shift ? 'rotate' : 'resize',
+        mode: shift && hi === 4 ? 'rotate' : 'resize',
         startX: wx, startY: wy,
         orig: new Map([[o.id, { ...o.props }]]),
-        center: shift
+        center: shift && hi === 4
           ? { x: (boundsOf(o)!.x0 + boundsOf(o)!.x1) / 2,
               y: (boundsOf(o)!.y0 + boundsOf(o)!.y1) / 2 }
           : null,
-        moved: false,
+        moved: false, handle: hi,
       }
       return
     }
@@ -137,20 +152,20 @@ export class Editor {
       if (this.selected.has(hit.id)) this.selected.delete(hit.id)
       else this.selected.add(hit.id)
       this.drag = { mode: 'pan-hint', startX: wx, startY: wy,
-                    orig: new Map(), center: null, moved: false }
+                    orig: new Map(), center: null, moved: false, handle: -1 }
     } else if (hit) {
       if (!this.selected.has(hit.id)) { this.selected.clear(); this.selected.add(hit.id) }
       this.drag = {
         mode: 'move', startX: wx, startY: wy,
         orig: new Map([...this.selected]
           .map((id) => [id, { ...this.find(id)!.props }])),
-        center: null, moved: false,
+        center: null, moved: false, handle: -1,
       }
     } else {
       this.selected.clear()
       this.marquee = { x0: wx, y0: wy, x1: wx, y1: wy }
       this.drag = { mode: 'marquee', startX: wx, startY: wy,
-                    orig: new Map(), center: null, moved: false }
+                    orig: new Map(), center: null, moved: false, handle: -1 }
     }
     this.redraw()
   }
@@ -165,7 +180,7 @@ export class Editor {
       this.selected.clear(); this.selected.add(id)
       this.drag = { mode: 'create', startX: wx, startY: wy,
                     orig: new Map([[id, props]]), center: null,
-                    moved: false, localCreate: { id, z } }
+                    moved: false, handle: -1, localCreate: { id, z } }
       return
     }
     const props = this.tool === 'line'
@@ -176,10 +191,10 @@ export class Editor {
     this.session.submit('Create', { id, kind: this.tool, z: this.topZ(), props })
     this.selected.clear(); this.selected.add(id)
     this.drag = { mode: 'create', startX: wx, startY: wy,
-                  orig: new Map([[id, props]]), center: null, moved: false }
+                  orig: new Map([[id, props]]), center: null, moved: false, handle: -1 }
   }
 
-  mouseMove(wx: number, wy: number): void {
+  mouseMove(wx: number, wy: number, aspect = false): void {
     const d = this.drag
     if (!d) return
     const dx = wx - d.startX
@@ -217,9 +232,32 @@ export class Editor {
             : undefined,
         })
       } else if (d.mode === 'resize') {
+        // T-16: delta in the OBJECT's axes (rotate world delta by -rot)
+        // — a rotated rect resizes along its own edges, not screen axes.
+        const rot = rad(num(orig, 'rot'))
+        const c0 = Math.cos(-rot), s0 = Math.sin(-rot)
+        const dxl = dx * c0 - dy * s0
+        const dyl = dx * s0 + dy * c0
+        const [sx, sy] = HANDLE_DIRS[d.handle] ?? [1, 1]
+        const w0 = num(orig, 'w', 1), h0 = num(orig, 'h', 1)
+        let w2 = Math.max(2, w0 + sx * dxl)
+        let h2 = Math.max(2, h0 + sy * dyl)
+        if (aspect && (sx !== 0 || sy !== 0)) { // Shift = keep ratio
+          const ratio = w0 / h0
+          if (sy === 0 || Math.abs(w2 / w0 - 1) >= Math.abs(h2 / h0 - 1)) h2 = w2 / ratio
+          else w2 = h2 * ratio
+        }
+        // Anchor the OPPOSITE side/corner: its local offset scales with
+        // w/h, so shift the center by the rotated difference — the
+        // anchor point stays pixel-fixed in world space.
+        const dax = (-sx) * (w0 - w2) / 2
+        const day = (-sy) * (h0 - h2) / 2
+        const cr = Math.cos(rot), sr = Math.sin(rot)
+        const cx0 = num(orig, 'x') + w0 / 2, cy0 = num(orig, 'y') + h0 / 2
         this.patchThrottled(oid, {
-          w: Math.max(2, num(orig, 'w', 1) + dx),
-          h: Math.max(2, num(orig, 'h', 1) + dy),
+          x: cx0 + dax * cr - day * sr - w2 / 2,
+          y: cy0 + dax * sr + day * cr - h2 / 2,
+          w: w2, h: h2,
         })
       } else if (d.mode === 'create') {
         if (d.localCreate) {

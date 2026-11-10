@@ -86,6 +86,7 @@ export default function App() {
       () => session().cursors.values(),
       () => editorRef.current?.selectionQuads() ?? [],
       () => editorRef.current?.marqueeRect() ?? null,
+      () => editorRef.current?.handlePoints() ?? [],
     )
     rendererRef.current = r
     r.onFrame = (s) => { if (++statTick.current % 6 === 0) setStats({ ...s }) }
@@ -254,7 +255,7 @@ export default function App() {
               r.pan(e.clientX - panDrag.current.x, e.clientY - panDrag.current.y)
               panDrag.current = { x: e.clientX, y: e.clientY }
             } else {
-              editor().mouseMove(w.x, w.y)
+              editor().mouseMove(w.x, w.y, e.shiftKey)
             }
             sessionRef.current?.sendPresence(w.x, w.y, color.current)
           }}
