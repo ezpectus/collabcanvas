@@ -3,7 +3,8 @@ import { Session } from './session'
 import { Renderer, type FrameStats } from './renderer'
 import { SceneIndex } from './quadtree'
 import { Editor, type Tool } from './editor'
-import { boundsOf, str } from './geometry'
+import { boundsOf, num, str } from './geometry'
+import type { DocModel } from './model'
 
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
@@ -52,6 +53,47 @@ function TextEditor({ id, orig, session: s, view, onClose }: {
         }
       }}
     />
+  )
+}
+
+/** T-36: numeric inspector — x/y/w/h/rot direct input for a single
+ *  selected box-kind object. Commits through Editor.applyProps so
+ *  undo and the wire op see the change like a drag would. */
+function Inspector({ editor, model }: {
+  editor: Editor; model: DocModel
+}) {
+  const sel = editor.selected
+  if (sel.size !== 1) return null
+  const id = [...sel][0]!
+  const o = model.objects().find((x) => x.id === id)
+  if (!o || o.props['x'] === undefined) return null // line/path: no x/y/w/h
+  const fields: [string, number][] = [
+    ['x', num(o.props, 'x')], ['y', num(o.props, 'y')],
+    ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
+    ['rot', num(o.props, 'rot')],
+  ]
+  return (
+    <aside className="history-panel inspector-panel">
+      <b>{o.kind} · {id.slice(0, 8)}</b>
+      {fields.map(([k, v]) => (
+        <div key={k} className="hist-row">
+          <span className="hist-seq">{k}</span>
+          <input className="insp-input" type="number" step="1"
+            // key+defaultValue: uncontrolled so typing doesn't fight
+            // the wire echo; remounts when the object changes.
+            key={`${id}:${k}`}
+            defaultValue={Math.round(v * 10) / 10}
+            onBlur={(e) => {
+              const nv = parseFloat(e.target.value)
+              if (Number.isFinite(nv)) editor.applyProps(id, { [k]: nv })
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              e.stopPropagation() // don't let canvas keys eat Enter/Esc
+            }} />
+        </div>
+      ))}
+    </aside>
   )
 }
 
@@ -394,6 +436,8 @@ export default function App() {
             ))}
           </aside>
         )}
+        {state === 'joined' && <Inspector editor={editor()}
+          model={session().model} />}
         {showHelp && (
           <aside className="history-panel help-panel">
             <b>Shortcuts</b>

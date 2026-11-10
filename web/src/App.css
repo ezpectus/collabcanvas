@@ -46,3 +46,5 @@ button.tool.active { background: #3d5af1; }
 .hist-row.sel { background: rgba(95,141,255,.25) }
 .help-panel { left: 50%; right: auto; transform: translateX(-50%); width: 300px }
 .help-panel .hist-seq { min-width: 105px }
+.inspector-panel { right: 12px; top: auto; bottom: 12px; width: 190px }
+.insp-input { width: 100%; background: #10162a; border: 1px solid #3a4a6b; color: #e8eaf2; border-radius: 4px; padding: 2px 6px; font: inherit }

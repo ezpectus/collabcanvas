@@ -134,6 +134,26 @@ export class Editor {
     this.undoStack.push(e)
     this.redraw()
   }
+  /** T-36: inspector commit — set named props on one object with
+   *  undo recorded per changed key. Shared by any numeric input UI. */
+  applyProps(id: string, props: Record<string, unknown>): void {
+    const o = this.find(id)
+    if (!o) return
+    const invProps: Record<string, unknown> = {}
+    const fwdProps: Record<string, unknown> = {}
+    for (const k in props)
+      if (props[k] !== undefined && props[k] !== o.props[k]) {
+        invProps[k] = o.props[k] ?? null
+        fwdProps[k] = props[k]
+      }
+    if (!Object.keys(fwdProps).length) return
+    this.recordUndo(
+      [{ type: 'Patch', payload: { id, props: invProps } }],
+      [{ type: 'Patch', payload: { id, props: fwdProps } }])
+    this.session.submit('Patch', { id, props: fwdProps })
+    this.redraw()
+  }
+
   /** T-22: repaint the selection with the current brush. Stroke for
    *  line/path, fill otherwise — matches what the renderer reads. */
   applyColor(c: string): void {
