@@ -18,10 +18,18 @@ public sealed class UserStore(IConnectionMultiplexer redis)
 
     public enum RegResult { Ok, Taken, BadInput }
 
+    // bcrypt truncates input past 72 bytes SILENTLY — a 100-char
+    // password would verify against its own 72-byte prefix, so the
+    // tail the user typed does nothing. Cap at the algorithm's real
+    // limit instead of pretending the extra chars matter.
+    public static bool PasswordOk(string pw) =>
+        pw.Length >= 6 &&
+        System.Text.Encoding.UTF8.GetByteCount(pw) <= 72;
+
     public async Task<(RegResult res, string? token)> RegisterAsync(
         string login, string password)
     {
-        if (!ValidLogin(login) || password.Length < 6)
+        if (!ValidLogin(login) || !PasswordOk(password))
             return (RegResult.BadInput, null);
         var key = $"user:{login}";
         if (await Db.KeyExistsAsync(key)) return (RegResult.Taken, null);

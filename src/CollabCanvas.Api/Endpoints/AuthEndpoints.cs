@@ -22,7 +22,7 @@ internal static class AuthEndpoints
                     Results.Ok(new { token, login }),
                 Auth.UserStore.RegResult.Taken =>
                     Results.Conflict("login taken"),
-                _ => Results.BadRequest("login 2-32 [a-z0-9_-], pass >= 6"),
+                _ => Results.BadRequest("login 2-32 [a-z0-9_-], pass 6..72B"),
             };
         });
 
@@ -93,9 +93,9 @@ internal static class AuthEndpoints
                 ? o.GetString() : null;
             var newPw = body.TryGetProperty("new", out var n)
                 ? n.GetString() : null;
-            if (string.IsNullOrEmpty(oldPw) ||
-                string.IsNullOrEmpty(newPw) || newPw.Length < 6)
-                return Results.BadRequest("old + new(>=6) required");
+            if (string.IsNullOrEmpty(oldPw) || newPw is null ||
+                !Auth.UserStore.PasswordOk(newPw))
+                return Results.BadRequest("old + new(6..72B) required");
             return await users.ChangePasswordAsync(
                 who.Value.id, who.Value.login, oldPw, newPw, token)
                 ? Results.NoContent()

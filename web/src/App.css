@@ -49,3 +49,20 @@ button.tool.active { background: #3d5af1; }
 .inspector-panel { right: 12px; top: auto; bottom: 140px; width: 190px } /* above minimap zone */
 .insp-input { width: 100%; background: #10162a; border: 1px solid #3a4a6b; color: #e8eaf2; border-radius: 4px; padding: 2px 6px; font: inherit }
 .empty-hint { position: absolute; left: 50%; top: 46%; transform: translateX(-50%); color: #5a6482; font-size: 14px; pointer-events: none }
+
+/* Narrow screens: the single-row header wraps, controls shrink,
+   overlay panels stop eating half the canvas. Touch gestures are
+   separate (T-51); this is only layout. */
+@media (max-width: 760px) {
+  .shell { padding: 8px; gap: 8px; }
+  header { flex-wrap: wrap; gap: 6px; }
+  h1 { font-size: 15px; }
+  button { padding: 6px 10px; font-size: 13px; }
+  button.tool { padding: 4px 8px; font-size: 12px; }
+  .docpick { max-width: 110px; font-size: 12px; }
+  .stats { display: none; }
+  .history-panel { width: 168px; max-height: 55%; font-size: 11px; }
+  .inspector-panel { width: 148px; bottom: 110px; }
+  .help-panel { width: 240px; }
+  .layers-panel { width: 160px; }
+}

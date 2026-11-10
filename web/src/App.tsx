@@ -341,7 +341,8 @@ export default function App() {
   }, [authedFetch, docId, loadMembers])
   // Active bearer links — invisible ones can't be revoked, so the
   // panel lists every live grant with copy + kill buttons.
-  const [linkList, setLinkList] = useState<Record<string, string> | null>(null)
+  const [linkList, setLinkList] = useState<
+    Record<string, { role: string; exp: number | null }> | null>(null)
   const loadLinks = useCallback(async () => {
     try {
       const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/links`)
@@ -943,7 +944,8 @@ export default function App() {
             {linkList && Object.entries(linkList).map(([t, r]) => (
               <div className="hist-row" key={t}>
                 <span className="hist-who" title={t}>
-                  {r} · {t.slice(0, 8)}…</span>
+                  {r.role} · {t.slice(0, 8)}…
+                  {r.exp ? ` · ⏳${new Date(r.exp * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}</span>
                 <button className="tool" title="copy URL"
                   onClick={() => void navigator.clipboard.writeText(
                     `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}&grant=${encodeURIComponent(t)}`)}>cp</button>

@@ -639,8 +639,54 @@ ok('comments: editor cannot delete another\'s row',
     .catch(e => e)).includes('forbidden'))
 ok('comments: guest REST denied',
   (await fetch(`${API}/docs/${OWN9}/comments`)).status === 403)
+
+// A link-guest deletes their OWN row — the author string AddComment
+// stamped is derived from the same connection id. A different
+// guest (different conn) must still be refused.
+const cTok = (await (await authed(`/docs/${OWN9}/links`, reg10.token,
+  { method: 'POST', body: JSON.stringify({ role: 'editor' }) })).json()).token
+const CG = client('bot-cguest')
+await CG.start()
+await CG.conn.invoke('JoinDocument',
+  { docId: OWN9, clientId: 'bot-cguest', lastSeq: 0, grant: cTok })
+const gRec = await CG.conn.invoke('AddComment', OWN9, 'guest was here')
+ok('comments: guest author stamped guest·conn',
+  String(gRec?.author ?? '').startsWith('guest·'), String(gRec?.author))
+ok('comments: guest deletes own row',
+  (await CG.conn.invoke('DeleteComment', OWN9, gRec.id)
+    .then(() => 'ok').catch(e => String(e))) === 'ok')
+const gRec2 = await CG.conn.invoke('AddComment', OWN9, 'guest row 2')
+const CG2 = client('bot-cguest2')
+await CG2.start()
+await CG2.conn.invoke('JoinDocument',
+  { docId: OWN9, clientId: 'bot-cguest2', lastSeq: 0, grant: cTok })
+ok('comments: other guest cannot delete the row',
+  String(await CG2.conn.invoke('DeleteComment', OWN9, gRec2.id)
+    .catch(e => e)).includes('forbidden'))
+await CG.conn.stop(); await CG2.conn.stop()
 await CM.conn.stop(); await CV.conn.stop()
 await CX.conn.stop(); await cDel.conn.stop()
+
+// Links list carries {role,exp} — the panel can show the deadline.
+const eList = await (await authed(`/docs/${OWN9}/links`,
+  reg10.token)).json()
+ok('links: list row carries {role,exp}',
+  typeof eList[cTok]?.role === 'string' && 'exp' in (eList[cTok] ?? {}),
+  JSON.stringify(eList[cTok]))
+const ttlTok = (await (await authed(`/docs/${OWN9}/links`, reg10.token,
+  { method: 'POST', body: JSON.stringify({ role: 'viewer', ttlHours: 2 }) }))
+  .json()).token
+const eList2 = await (await authed(`/docs/${OWN9}/links`,
+  reg10.token)).json()
+ok('links: ttl link shows future expiry',
+  typeof eList2[ttlTok]?.exp === 'number' &&
+  eList2[ttlTok].exp > Date.now() / 1000)
+
+// bcrypt truncates input past 72 bytes silently — a longer
+// password is refused, not quietly shortened.
+ok('auth: 100-char password refused', (await authPost('register',
+  { login: `p_${Date.now().toString(36)}`, password: 'x'.repeat(100) }))
+  .status === 400)
 
 // --- blob GC: the snapshot sweeper collects orphan blobs past the
 // grace window; referenced and freshly-uploaded ones survive.

@@ -192,8 +192,9 @@ internal static class DocEndpoints
             if (caller is null || caller < Auth.RoomRole.Admin)
                 return Results.StatusCode(403);
             var ls = await members.LinksAsync(id);
-            return Results.Ok(ls.ToDictionary(
-                kv => kv.Key, kv => Auth.MembershipStore.Name(kv.Value)));
+            return Results.Ok(ls.ToDictionary(kv => kv.Key,
+                kv => new { role = Auth.MembershipStore.Name(kv.Value.Role),
+                    exp = kv.Value.ExpiryUnix }));
         });
 
         app.MapPost("/docs/{id}/links", async (

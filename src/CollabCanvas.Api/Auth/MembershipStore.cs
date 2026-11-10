@@ -93,14 +93,16 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
 
     /// Parses "role[|expiry]"; an expired grant deletes itself
     /// lazily on first touch and resolves to nothing.
-    private async Task<RoomRole?> ReadLink(string docId, string token,
+    public readonly record struct LinkInfo(RoomRole Role, long? ExpiryUnix);
+
+    private async Task<LinkInfo?> ReadLink(string docId, string token,
         string raw)
     {
         var pipe = raw.IndexOf('|');
-        if (pipe < 0) return Parse(raw);
+        if (pipe < 0) return new LinkInfo(Parse(raw), null);
         if (long.TryParse(raw[(pipe + 1)..], out var exp) &&
             DateTimeOffset.UtcNow.ToUnixTimeSeconds() < exp)
-            return Parse(raw[..pipe]);
+            return new LinkInfo(Parse(raw[..pipe]), exp);
         await Db.HashDeleteAsync(LKey(docId), token);
         return null;
     }
@@ -108,20 +110,21 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
     public async Task<RoomRole?> LinkRoleAsync(string docId, string token)
     {
         var v = await Db.HashGetAsync(LKey(docId), token);
-        return v.IsNullOrEmpty ? null : await ReadLink(docId, token, v.ToString()!);
+        return v.IsNullOrEmpty ? null
+            : (await ReadLink(docId, token, v.ToString()!))?.Role;
     }
 
     public Task RemoveLinkAsync(string docId, string token) =>
         Db.HashDeleteAsync(LKey(docId), token);
 
-    public async Task<Dictionary<string, RoomRole>> LinksAsync(string docId)
+    public async Task<Dictionary<string, LinkInfo>> LinksAsync(string docId)
     {
         var h = await Db.HashGetAllAsync(LKey(docId));
-        var live = new Dictionary<string, RoomRole>();
+        var live = new Dictionary<string, LinkInfo>();
         foreach (var e in h)
             if (await ReadLink(docId, e.Name.ToString(), e.Value.ToString()!)
-                is { } r)
-                live[e.Name.ToString()] = r;
+                is { } li)
+                live[e.Name.ToString()] = li;
         return live;
     }
 

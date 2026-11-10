@@ -209,7 +209,11 @@ public sealed class DocumentHub(
         if (role is null) throw new HubException("forbidden");
         var rec = await comments.GetAsync(docId, cid);
         if (rec is null) return;
-        var who = Context.Items["login"] as string;
+        // Same identity string AddComment stamps — a guest deletes
+        // their own line only while that connection lives (connId
+        // is part of the name; a reconnect mints a new one).
+        var who = Context.Items["login"] as string
+            ?? $"guest·{Context.ConnectionId[..6]}";
         if (role < CollabCanvas.Api.Auth.RoomRole.Admin && rec.Author != who)
             throw new HubException("forbidden");
         await comments.RemoveAsync(docId, cid);
