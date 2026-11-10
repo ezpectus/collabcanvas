@@ -66,12 +66,17 @@ function Inspector({ editor, model }: {
   if (sel.size !== 1) return null
   const id = [...sel][0]!
   const o = model.objects().find((x) => x.id === id)
-  if (!o || o.props['x'] === undefined) return null // line/path: no x/y/w/h
-  const fields: [string, number][] = [
-    ['x', num(o.props, 'x')], ['y', num(o.props, 'y')],
-    ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
-    ['rot', num(o.props, 'rot')],
-  ]
+  if (!o) return null
+  // Line endpoints are numeric too — editable like box x/y. Path
+  // points are an array: no honest scalar input, hidden entirely.
+  const fields: [string, number][] = o.kind === 'line'
+    ? [['x1', num(o.props, 'x1')], ['y1', num(o.props, 'y1')],
+       ['x2', num(o.props, 'x2')], ['y2', num(o.props, 'y2')]]
+    : o.props['x'] === undefined ? []
+    : [['x', num(o.props, 'x')], ['y', num(o.props, 'y')],
+       ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
+       ['rot', num(o.props, 'rot')]]
+  if (!fields.length) return null
   if (o.kind === 'text')
     fields.push(['fontSize', num(o.props, 'fontSize', 16)])
   return (
