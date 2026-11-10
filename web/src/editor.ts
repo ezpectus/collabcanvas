@@ -256,12 +256,12 @@ export class Editor {
           : o.kind === 'line' ? 'point'
           : hi === 8 || (shift && hi === 4) ? 'rotate' : 'resize',
         startX: wx, startY: wy,
-        orig: new Map([...this.selected]
+        orig: new Map(this.mutable()
           .map((id) => [id, { ...this.find(id)!.props }])),
-        center: this.selected.size >= 2
+        center: this.mutable().length >= 2
           ? (() => { // grotate pivot = union-bbox center
               let u: BBox | null = null
-              for (const id of this.selected) {
+              for (const id of this.mutable()) {
                 const b = boundsOf(this.find(id)!)
                 if (b) u = u ? { x0: Math.min(u.x0, b.x0),
                                  y0: Math.min(u.y0, b.y0),
