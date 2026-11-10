@@ -39,6 +39,7 @@ export class Renderer {
     private readonly getSelection: () => { x: number; y: number }[][],
     private readonly getMarquee: () => BBox | null,
     private readonly getHandles: () => { x: number; y: number }[] = () => [],
+    private readonly getGuides: () => { axis: 'v' | 'h'; pos: number }[] = () => [],
   ) {}
 
   markDirty(): void { this.dirty = true }
@@ -153,6 +154,20 @@ export class Renderer {
       ctx.setLineDash([4 / v.scale, 4 / v.scale])
       ctx.strokeRect(mq.x0, mq.y0, mq.x1 - mq.x0, mq.y1 - mq.y0)
       ctx.setLineDash([])
+    }
+
+    // T-30: alignment guide lines — full-viewport hairlines at the
+    // snapped edge while the drag is in progress.
+    const guides = this.getGuides()
+    if (guides.length) {
+      ctx.strokeStyle = '#ff5fa2'
+      ctx.lineWidth = 1 / v.scale
+      ctx.beginPath()
+      for (const g of guides) {
+        if (g.axis === 'v') { ctx.moveTo(g.pos, view.y0); ctx.lineTo(g.pos, view.y1) }
+        else { ctx.moveTo(view.x0, g.pos); ctx.lineTo(view.x1, g.pos) }
+      }
+      ctx.stroke()
     }
 
     // Remote cursors + their selection frames (T-18): each user's

@@ -47,6 +47,9 @@ export class Editor {
   /** T-23: snap-to-grid, toggled by G. Snaps the pointer, so create,
    *  move and resize all align — the wire ops carry snapped values. */
   snap = false
+  /** T-30: alignment guides active during a move-drag, world coords.
+   *  Renderer reads them every frame; cleared on mouseUp. */
+  guides: { axis: 'v' | 'h'; pos: number }[] = []
   private grid(v: number): number { return this.snap ? Math.round(v / 10) * 10 : v }
   /** Text object asking for the inline editor (dblclick / click-place).
    *  The overlay lives in React-land — the editor only flags the id. */
@@ -255,12 +258,50 @@ export class Editor {
                   orig: new Map([[id, props]]), center: null, moved: false, handle: -1 }
   }
 
-  mouseMove(wx: number, wy: number, aspect = false): void {
+  mouseMove(wx: number, wy: number, aspect = false, scale = 1): void {
     const d = this.drag
     if (!d) return
-    const dx = wx - d.startX
-    const dy = wy - d.startY
+    let dx = wx - d.startX
+    let dy = wy - d.startY
     d.moved = true
+
+    // T-30: alignment — snap the dragged selection's edges/center to
+    // edges/centers of other objects within tolerance. Guides show
+    // which edge caught. O(objects×9) per move frame — fine at 10k,
+    // revisit if profiling says otherwise.
+    this.guides = []
+    if (d.mode === 'move') {
+      let sb: BBox | null = null
+      for (const [oid, orig] of d.orig) {
+        const o = this.find(oid)
+        const b = o && boundsOf({ ...o, props: orig })
+        if (b) sb = sb
+          ? { x0: Math.min(sb.x0, b.x0), y0: Math.min(sb.y0, b.y0),
+              x1: Math.max(sb.x1, b.x1), y1: Math.max(sb.y1, b.y1) }
+          : b
+      }
+      if (sb) {
+        const mine = {
+          v: [sb.x0 + dx, (sb.x0 + sb.x1) / 2 + dx, sb.x1 + dx],
+          h: [sb.y0 + dy, (sb.y0 + sb.y1) / 2 + dy, sb.y1 + dy],
+        }
+        const tol = 6 / scale
+        let bx = tol + 1, by = tol + 1, gx = 0, gy = 0
+        for (const o of this.objects()) {
+          if (d.orig.has(o.id)) continue
+          const b = boundsOf(o)
+          if (!b) continue
+          for (const c of [b.x0, (b.x0 + b.x1) / 2, b.x1])
+            for (const m of mine.v)
+              if (Math.abs(c - m) < Math.abs(bx)) { bx = c - m; gx = c }
+          for (const c of [b.y0, (b.y0 + b.y1) / 2, b.y1])
+            for (const m of mine.h)
+              if (Math.abs(c - m) < Math.abs(by)) { by = c - m; gy = c }
+        }
+        if (Math.abs(bx) <= tol) { dx += bx; this.guides.push({ axis: 'v', pos: gx }) }
+        if (Math.abs(by) <= tol) { dy += by; this.guides.push({ axis: 'h', pos: gy }) }
+      }
+    }
 
     if (d.mode === 'marquee') {
       this.marquee = { x0: Math.min(d.startX, wx), y0: Math.min(d.startY, wy),
@@ -328,6 +369,7 @@ export class Editor {
   mouseUp(): void {
     const d = this.drag
     this.drag = null
+    this.guides = []
     if (!d) return
 
     if (d.mode === 'marquee') {
