@@ -3,7 +3,7 @@ import { Session } from './session'
 import { Renderer, type FrameStats } from './renderer'
 import { SceneIndex } from './quadtree'
 import { Editor, type Tool } from './editor'
-import { boundsOf } from './geometry'
+import { boundsOf, str } from './geometry'
 
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
@@ -146,6 +146,19 @@ export default function App() {
   // machine (hist deeper than MAXLEN doesn't exist).
   const [hist, setHistory] = useState<
     { seq: number; type: string; clientId: string }[] | null>(null)
+
+  // T-28: layers panel — the find-your-object surface. At 10k objects
+  // canvas clicking alone can't locate things; z-sorted list can.
+  const [showLayers, setShowLayers] = useState(false)
+  const pickFromLayers = useCallback((id: string) => {
+    const ed = editor()
+    ed.selected.clear(); ed.selected.add(id)
+    const o = session().model.objects().find((x) => x.id === id)
+    const b = o && boundsOf(o)
+    if (b) rendererRef.current?.fitBounds(
+      { x0: b.x0 - 40, y0: b.y0 - 40, x1: b.x1 + 40, y1: b.y1 + 40 })
+    markDirty()
+  }, [editor, markDirty])
   const showHistory = useCallback(async () => {
     if (hist !== null) { setHistory(null); return }
     try {
@@ -287,6 +300,8 @@ export default function App() {
         }}>PNG</button>
         <button className={hist !== null ? 'tool active' : 'tool'}
           onClick={() => void showHistory()}>history</button>
+        <button className={showLayers ? 'tool active' : 'tool'}
+          onClick={() => setShowLayers(!showLayers)}>layers</button>
         <button onClick={() => stress(10_000)}>Stress 10k</button>
         <button onClick={() => stress(0)}>Clear</button>
         {stats && (
@@ -350,6 +365,21 @@ export default function App() {
         {editing && <TextEditor id={editing.id} orig={editing.orig}
           session={session()} view={rendererRef.current!.view}
           onClose={closeEdit} />}
+        {showLayers && state === 'joined' && (
+          <aside className="history-panel layers-panel">
+            <b>Layers · top first</b>
+            {[...session().model.objects()].reverse().map((o) => (
+              <div key={o.id}
+                className={editor().selected.has(o.id)
+                  ? 'hist-row sel' : 'hist-row'}
+                onClick={() => pickFromLayers(o.id)}>
+                <span className="hist-type">{o.kind}</span>
+                <span className="hist-who">
+                  {str(o.props, 'text') || o.id.slice(0, 8)}</span>
+              </div>
+            ))}
+          </aside>
+        )}
         {hist !== null && (
           <aside className="history-panel">
             <b>Recent ops · doc {docId}</b>

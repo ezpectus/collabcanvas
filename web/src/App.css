@@ -40,3 +40,7 @@ button.tool.active { background: #3d5af1; }
 .hist-seq { color: #5f8dff; min-width: 34px }
 .hist-type { color: #9fd0a5; min-width: 52px }
 .hist-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.layers-panel { left: 12px; right: auto; width: 200px }
+.hist-row { cursor: pointer }
+.hist-row:hover { background: rgba(95,141,255,.12) }
+.hist-row.sel { background: rgba(95,141,255,.25) }

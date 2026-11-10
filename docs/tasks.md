@@ -582,3 +582,9 @@ object + viewport rect; docBounds cache theo model.version. Mặc
 Vá lỗ hổng UX thật (không phải feature bịa): line vẽ xong không
 reshape được — giờ 2 endpoint draggable. Arrows nudge 1wu
 (Shift=10) cho mọi selection — chuẩn editor. Undo-aware cả hai.
+
+## T-28 · Layers panel · `review` · S
+Bề mặt "tìm object" — 10k object thì click không định vị nổi.
+Panel z-sorted (top đầu), click row → select + zoom tới.
+Kraï: list là snapshot lúc render — không subscribe model, op mới
+đến khi panel mở sẽ không tự refresh (mở lại là đủ).
