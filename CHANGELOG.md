@@ -1,4 +1,64 @@
-## 2026-11-10 (продолжение) — T-26..T-34 + bugfix pass [D]
+# Changelog — коммиты → файлы → таски
+
+Карта «коммит → файлы → таск» (та же конвенция, что в Notification
+Engine). Закрытые таски — `docs/done-log.md`.
+
+Легенда: **[D]** — Devin писал код/доки · **[docs]** — документы.
+Зоны «юзер руками» нет — юзер ревьюит.
+
+---
+
+## 2026-11-10 — T-43 + охота за дырами [D]
+
+- T-43: link expiry — ttlHours 1..720, lazy self-delete, UI exp-поле
+  (e677df6); доки+журнал (0e1d102)
+- fix-hunt: unlist auth header, atomic login throttle, doc-mint
+  quota, /ops grant, shareErr visibility (4aa7c3f)
+- fix-hunt: logout kills live socket rights, nosniff blobs (d672a59);
+  presence name on dead token (ecc3c5d); ledger (d7a7fce)
+
+## 2026-11-10 — T-26 auth+роли, T-27, T-35, T-36 [D]
+
+- Дизайн auth+ролей: Canva-модель, threat-map, group-by-tag,
+  отложенное с триггерами (ef7d316)
+- T-26 stage 1: UserStore Redis + BCrypt, /auth/*, hub-токен
+  (query+header), серверное presence-имя; бот +7 auth-чеков
+  (9d4f56d); клиент: sign-in UI + token в join + stale-closure
+  fix (fd6eaca); docs stage 1 (2abc97b)
+- T-26 stage 2: membership + роли (875b916), JoinResult.Role в
+  клиенте (5e242dd). Бот +18 authz-чеков. Краши живого прогона:
+  Results.Forbid() без auth-пайплайна → StatusCode(403);
+  MembershipStore.TryParse → ParseRole (конвенция биндинга
+  minimal-API валила стартап); docs (b06a1de)
+- T-26 stage 3: share-линки guest viewer/editor, grant per-op
+  revalidation, revoke на живом сокете; бот +9 (97eca9b)
+- T-26 stage 4: share-UI + viewer-mode; фикс фантома denied-ack
+  (optimistic apply без отката → rejoin-ресинк) (1e1868a);
+  статус+остатки (7c9ac36, d67e577)
+- T-27: doc meta + PATCH rename, owner/admin гейт, бот +4 (0b262bb)
+- T-35: группировка по тегам — ctrl+g/ctrl+shift+g, клик-селект
+  по тегу, undo-aware (30d229b); ledger+docs (28e646c, ad026d6)
+- T-36: image blobs — Redis-store, upload editor+, GET member/
+  grant, рендер-кэш, капы; /auth/login throttle 8/10мин (868c591);
+  доки+журнал (f124e11)
+
+## 2026-11-10 — T-38..T-42 + инвентаризация [D]
+
+- T-38 lock-gates complete (ee97025, 0ddee47); shift-rotate 15° snap +
+  inspector disabled/locked (fb01f4f); line endpoints in inspector
+  (8bcd828)
+- T-39 opacity (98d4b60, 5276472); lineWidth/radius/dash/align/box-
+  stroke/hollow props wired end-to-end (addbafe, 09a2fc1, 57d9ac8,
+  b1624da, 20726d3, 6d081b2); lineWidth leak fix (8894b29);
+  PLAN/roadmap/checklist syncs (8c72e7d, 3823b1d, 660acdb)
+- T-40 multi-inspector union translate (2385f31, 3d5e1de); layers
+  cap 200 (9baec7d); Esc panel-dismiss + deps fix (6baf76b);
+  inspector/minimap overlap (e1803ee); T-41 layers drag-reorder
+  (dffbe45, 17b6f4a); T-42 clipboard trio (98597ed, d92b7b1);
+  status.md inventory (9c0505b); ledger (6668c65); empty-state
+  hint (fb9dd83)
+
+## 2026-11-10 — T-26..T-34 + bugfix pass [D]
 
 - T-27: draggable line endpoints + arrow nudge (a175bd0); esc/ctrl+a (904c81d)
 - T-28: layers panel — z-sorted, click selects+zooms (9ee3c9d)
@@ -19,19 +79,11 @@
   + fontSize fix (975bb48); T-38 object locking (646de8e);
   T-36/T-37 ticket+ledger docs (1600bf4)
 
-## 2026-11-10 (tiếp) — T-23/24/25 [D]
-- T-23: G snap-to-grid, grid adaptive density, path dùng brush
-- T-24: IOpJournal.Tail + GET /ops + history panel (audit, ko time-travel)
+## 2026-11-10 — T-23/24/25 [D]
+
+- T-23: G snap-to-grid, grid adaptive density, path с brush-цветом
+- T-24: IOpJournal.Tail + GET /ops + history panel (audit, без time-travel)
 - T-25: M minimap — dots + viewport rect, docBounds cached per version
-# Changelog — коммиты → файлы → таски
-
-Карта «коммит → файлы → таск» (та же конвенция, что в Notification
-Engine). Закрытые таски — `docs/done-log.md`.
-
-Легенда: **[D]** — Devin писал код/доки · **[docs]** — документы.
-Зоны «юзер руками» нет — юзер ревьюит.
-
----
 
 ## 2026-11-10 — T-16..T-20 финиш бэклога [D]
 
@@ -251,46 +303,3 @@ Engine). Закрытые таски — `docs/done-log.md`.
   карта отказов, честные риски, gate-вопросы §13 [docs]
 - `53f6bda` — скелет проекта: AGENTS.md (перевёрнутые роли),
   tasks.md (11 тикетов), review_checklists, PLAN с 5 решениями [docs]
-- T-38 lock-gates complete (ee97025, 0ddee47); shift-rotate 15° snap +
-  inspector disabled/locked (fb01f4f); line endpoints in inspector
-  (8bcd828)
-- T-39 opacity (98d4b60, 5276472); lineWidth/radius/dash/align/box-
-  stroke/hollow props wired end-to-end (addbafe, 09a2fc1, 57d9ac8,
-  b1624da, 20726d3, 6d081b2); lineWidth leak fix (8894b29);
-  PLAN/roadmap/checklist syncs (8c72e7d, 3823b1d, 660acdb)
-- T-40 multi-inspector union translate (2385f31, 3d5e1de); layers
-  cap 200 (9baec7d); Esc panel-dismiss + deps fix (6baf76b);
-  inspector/minimap overlap (e1803ee); T-41 layers drag-reorder
-  (dffbe45, 17b6f4a); T-42 clipboard trio (98597ed, d92b7b1);
-  status.md inventory (9c0505b); ledger (6668c65)
-
-## 2026-11-10 (auth stage 1) — T-26 начат
-
-- Дизайн auth+ролей: Canva-модель, threat-map, group-by-tag,
-  отложенное с триггерами (ef7d316)
-- T-26 stage 1: UserStore Redis + BCrypt, /auth/*, hub-токен
-  (query+header), серверное presence-имя; бот +7 auth-чеков
-  (9d4f56d); клиент: sign-in UI + token в join + stale-closure
-  fix (fd6eaca)
-- Записанные дыры stage 1: /docs открыт, гость=editor, logout
-  не рвёт живой сокет, /auth/login без throttle, query-токен
-  в логах прокси
-- T-26 stage 2: membership + роли (875b916), JoinResult.Role в
-  клиенте (5e242dd). Бот +18 authz-чеков. Краши живого прогона:
-  Results.Forbid() без auth-пайплайна → StatusCode(403);
-  MembershipStore.TryParse → ParseRole (конвенция биндинга
-  minimal-API валила стартап)
-- T-26 stage 3: share-линки guest viewer/editor, grant per-op
-  revalidation, revoke на живом сокете; бот +9 (97eca9b)
-- T-26 stage 4: share-UI + viewer-mode; фикс фантома denied-ack
-  (optimistic apply без отката → rejoin-ресинк) (коммит выше)
-- T-27: doc meta + PATCH rename, owner/admin гейт, бот +4 (0b262bb)
-- T-35: группировка по тегам — ctrl+g/ctrl+shift+g, клик-селект
-  по тегу, undo-aware (коммит выше)
-- T-36: image blobs — Redis-store, upload editor+, GET member/
-  grant, рендер-кэш, капы; /auth/login throttle 8/10мин (868c591)
-- fix-hunt: unlist auth header, atomic login throttle, doc-mint
-  quota, /ops grant, shareErr visibility (4aa7c3f); logout kills
-  live socket rights, nosniff blobs, presence name on dead token
-  (d672a59 + next)
-- T-43: link expiry — ttlHours 1..720, lazy self-delete, UI exp-поле (e677df6)

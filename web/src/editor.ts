@@ -125,6 +125,24 @@ export class Editor {
       .filter((o) => o.props['group'] === gid).map((o) => o.id)
   }
 
+  /** Set-level version: any selected member pulls in the whole
+      group — a group is one unit under marquee/Ctrl+A too, not
+      just under a click. Locked members stay out (T-38 rule:
+      they don't exist for selection gestures). */
+  private expandSelection(): void {
+    const tags = new Set<string>()
+    for (const id of this.selected) {
+      const g = this.find(id)?.props['group']
+      if (typeof g === 'string' && g) tags.add(g)
+    }
+    if (!tags.size) return
+    for (const o of this.objects())
+      if (!o.props['locked'] &&
+          typeof o.props['group'] === 'string' &&
+          tags.has(o.props['group'] as string))
+        this.selected.add(o.id)
+  }
+
   /** Tag/untag the mutable selection — one undo record either way.
       null clears the prop (falsy = ungrouped); previous tag values
       are restored on undo per object. */
@@ -570,13 +588,15 @@ export class Editor {
     if (d.mode === 'marquee') {
       const m = this.marquee!
       this.marquee = null
-      if (d.moved)
+      if (d.moved) {
         for (const o of this.objects()) {
           if (o.props['locked']) continue
           const b = boundsOf(o)
           if (b && !(b.x1 < m.x0 || b.x0 > m.x1 || b.y1 < m.y0 || b.y0 > m.y1))
             this.selected.add(o.id)
         }
+        this.expandSelection()
+      }
       this.redraw()
       return
     }
@@ -700,6 +720,7 @@ export class Editor {
       // selection state).
       for (const o of this.objects())
         if (!o.props['locked']) this.selected.add(o.id)
+      this.expandSelection()
       this.redraw(); return
     }
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }

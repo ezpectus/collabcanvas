@@ -204,6 +204,7 @@ export default function App() {
   const color = useRef(COLORS[Math.floor(Math.random() * COLORS.length)]!)
   const panDrag = useRef<{ x: number; y: number } | null>(null)
   const lastPos = useRef({ x: 0, y: 0 }) // for selection-only updates
+  const seenMouse = useRef(false)
   const spaceDown = useRef(false)
   const statTick = useRef(0)
 
@@ -265,11 +266,6 @@ export default function App() {
     (editorRef.current ??= new Editor(session(), indexRef.current, markDirty)),
   [markDirty])
 
-  const refreshDocs = useCallback(async () => {
-    try { setDocList(await (await fetch('/docs')).json()) }
-    catch { /* discovery degrades, doc still works */ }
-  }, [])
-
   // T-24: audit view of the journal tail — who did what, not a time
   // machine (hist deeper than MAXLEN doesn't exist).
   const [hist, setHistory] = useState<
@@ -298,6 +294,12 @@ export default function App() {
       ...init, headers: { 'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } }),
     [token])
+  // Owned docs are member-only on the server — an anonymous /docs
+  // would hide them from their own owner's picker.
+  const refreshDocs = useCallback(async () => {
+    try { setDocList(await (await authedFetch('/docs')).json()) }
+    catch { /* discovery degrades, doc still works */ }
+  }, [authedFetch])
   const copyLink = useCallback(async (r: 'viewer' | 'editor') => {
     try {
       const ttlInput =
@@ -376,11 +378,12 @@ export default function App() {
   const showHistory = useCallback(async () => {
     if (hist !== null) { setHistory(null); return }
     try {
-      const ops = await (await fetch(
-        `/ops?doc=${encodeURIComponent(docId)}&n=50`)).json()
+      const ops = await (await authedFetch(
+        `/ops?doc=${encodeURIComponent(docId)}&n=50` +
+        (grant ? `&grant=${encodeURIComponent(grant)}` : ''))).json()
       setHistory(ops)
     } catch { setHistory([]) }
-  }, [hist, docId])
+  }, [hist, docId, authedFetch, grant])
 
   const connect = useCallback(async () => {
     setState('connecting')
@@ -475,7 +478,10 @@ export default function App() {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v')
         void navigator.clipboard?.readText()
-          .then((s) => editor().pasteJson(s, lastPos.current))
+          // No cursor seen yet → paste falls back to the copy's own
+          // spot +24 offset; (0,0) would dump it outside the view.
+          .then((s) => editor().pasteJson(s,
+            seenMouse.current ? lastPos.current : undefined))
           .catch(() => {}) // clipboard denied or not ours — no-op
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
       editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.altKey)
@@ -672,7 +678,7 @@ export default function App() {
               editor().mouseMove(w.x, w.y, e.shiftKey,
                 rendererRef.current!.view.scale, e.altKey)
             }
-            lastPos.current = w
+            lastPos.current = w; seenMouse.current = true
             sessionRef.current?.sendPresence(w.x, w.y, color.current,
               [...(editorRef.current?.selected ?? [])])
           }}

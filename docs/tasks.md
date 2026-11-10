@@ -563,16 +563,16 @@ Create — path перестал быть самым жирным op'ом. path.
 на сетке, тянуть можешь куда угодно.
 
 ## T-24 · Version history (audit view) · `review` · M
-Đã xây phần audit: `Tail(n)` trên IOpJournal (Redis XREVRANGE
-bounded — không scan 10k), GET /ops?doc=&n=, panel "history"
-ở client (seq/type/client). Restore-from-seq vẫn defer: MAXLEN
-xóa tiền-sử, rewind thật không thể — panel là audit không phải
-time machine, chữ đó đã ghi trong code comment.
+Реализован аудит-просмотр: `Tail(n)` на IOpJournal (Redis XREVRANGE
+ограниченный — без скана 10k), GET /ops?doc=&n=, панель «history»
+в клиенте (seq/type/client). Restore-from-seq отложен: MAXLEN
+стирает предысторию, настоящий rewind невозможен — панель это
+аудит, не машина времени, это прямо записано в комментарии кода.
 
 ## T-25 · Minimap · `review` · S
-Xong: `m` toggle, screen-space overlay trong main canvas — dot per
-object + viewport rect; docBounds cache theo model.version. Mặc
-định off (10k dots vẫn tốn ~2ms/frame).
+Готово: `m` toggle, screen-space оверлей в главном канвасе — точка
+на объект + прямоугольник вьюпорта; docBounds кэшится по
+model.version. По умолчанию выкл (10k точек — ~2мс/кадр).
 
 ## T-26 · Auth + share-права · `in-progress` · L
 Дизайн: `docs/design/auth-and-roles.md` (Canva-модель, threat-map).
@@ -621,15 +621,17 @@ object + viewport rect; docBounds cache theo model.version. Mặc
   потребует CSRF-слоя — отдельное решение).
 
 ## T-27 · Line endpoints + arrow nudge · `review` · XS
-Vá lỗ hổng UX thật (không phải feature bịa): line vẽ xong không
-reshape được — giờ 2 endpoint draggable. Arrows nudge 1wu
-(Shift=10) cho mọi selection — chuẩn editor. Undo-aware cả hai.
+Закрыта реальная UX-дыра (не выдуманная фича): нарисованную линию
+нельзя было изменить — теперь 2 endpoint'а драгабельны. Стрелки
+наджут на 1wu (Shift=10) для любого выделения — стандарт редактора.
+Оба undo-aware.
 
 ## T-28 · Layers panel · `review` · S
-Bề mặt "tìm object" — 10k object thì click không định vị nổi.
-Panel z-sorted (top đầu), click row → select + zoom tới.
-Kraï: list là snapshot lúc render — không subscribe model, op mới
-đến khi panel mở sẽ không tự refresh (mở lại là đủ).
+Поверхность «найти объект» — по 10k объектов кликом не попадёшь.
+Панель z-sorted (верхний первым), клик по строке → select + zoom
+к объекту. Край: список — снапшот на момент рендера, без подписки
+на модель; прилетевший op при открытой панели сам не обновит
+список (переоткрытие решает).
 
 ## T-35 · Group tags · `review` · S
 Flat `group`-prop (модель из дизайна auth-дока, юзер выбрал «по
