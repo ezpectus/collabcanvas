@@ -294,6 +294,10 @@ export default function App() {
       ...init, headers: { 'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } }),
     [token])
+  /** Uncontrolled inputs in the share panel — one cast instead of
+      repeating getElementById + as at every call site. */
+  const field = <T extends HTMLElement = HTMLInputElement>(id: string) =>
+    document.getElementById(id) as T | null
   // Owned docs are member-only on the server — an anonymous /docs
   // would hide them from their own owner's picker.
   const refreshDocs = useCallback(async () => {
@@ -302,9 +306,7 @@ export default function App() {
   }, [authedFetch])
   const copyLink = useCallback(async (r: 'viewer' | 'editor') => {
     try {
-      const ttlInput =
-        document.getElementById('link-ttl') as HTMLInputElement | null
-      const ttlH = ttlInput?.valueAsNumber
+      const ttlH = field('link-ttl')?.valueAsNumber
       const body: Record<string, unknown> = { role: r }
       if (ttlH && ttlH > 0) body['ttlHours'] = ttlH
       const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/links`,
@@ -360,11 +362,10 @@ export default function App() {
     } catch { setAuthErr('auth request failed') }
   }, [])
   const logout = useCallback(async () => {
-    await fetch('/auth/logout', { method: 'POST',
-      headers: { Authorization: `Bearer ${token}` } }).catch(() => {})
+    await authedFetch('/auth/logout', { method: 'POST' }).catch(() => {})
     localStorage.removeItem('cc_token'); localStorage.removeItem('cc_login')
     setToken(null); setLogin(null)
-  }, [token])
+  }, [authedFetch])
   const [paintMode, setPaintMode] = useState<'fill' | 'stroke'>('fill')
   const pickFromLayers = useCallback((id: string) => {
     const ed = editor()
@@ -536,12 +537,12 @@ export default function App() {
             <input className="insp-input" style={{ width: 90 }}
               placeholder="pass" type="password" id="auth-pass" />
             <button className="tool" onClick={() => void doAuth('login',
-              (document.getElementById('auth-login') as HTMLInputElement).value,
-              (document.getElementById('auth-pass') as HTMLInputElement).value)}>
+              field('auth-login')?.value ?? '',
+              field('auth-pass')?.value ?? '')}>
               sign in</button>
             <button className="tool" onClick={() => void doAuth('register',
-              (document.getElementById('auth-login') as HTMLInputElement).value,
-              (document.getElementById('auth-pass') as HTMLInputElement).value)}>
+              field('auth-login')?.value ?? '',
+              field('auth-pass')?.value ?? '')}>
               register</button>
           </>
         )}
@@ -562,8 +563,8 @@ export default function App() {
             <button className="tool" title="remove this doc from the shared list"
               onClick={() => void (async () => {
                 // T-32: delist only — journal survives; rejoining re-adds.
-                await fetch(`/docs/${encodeURIComponent(docId)}`, { method: 'DELETE',
-                  headers: { Authorization: `Bearer ${token}` } })
+                await authedFetch(
+                  `/docs/${encodeURIComponent(docId)}`, { method: 'DELETE' })
                 void refreshDocs()
               })()}>unlist</button>
           </>
@@ -596,12 +597,13 @@ export default function App() {
               e.target.value = ''
               if (!f || state !== 'joined') return
               void (async () => {
-                const res = await fetch(
+                // authedFetch keeps Bearer; the Content-Type
+                // override replaces its json default.
+                const res = await authedFetch(
                   `/docs/${encodeURIComponent(docId)}/blobs`
                     + (grant ? `?grant=${encodeURIComponent(grant)}` : ''),
                   { method: 'POST',
-                    headers: { 'Content-Type': f.type,
-                      Authorization: `Bearer ${token}` }, body: f })
+                    headers: { 'Content-Type': f.type }, body: f })
                 if (!res.ok) { setShareErr(`upload: ${res.status}`); return }
                 const { id } = await res.json() as { id: string }
                 const v = rendererRef.current!.view
@@ -616,7 +618,7 @@ export default function App() {
               })()
             }} />
           <button className="tool" title="upload image"
-            onClick={() => document.getElementById('img-upload')?.click()}>
+            onClick={() => field('img-upload')?.click()}>
             img⭱</button>
         </>)}
         <button onClick={() => {
@@ -756,7 +758,7 @@ export default function App() {
               <input className="insp-input" id="doc-rename"
                 placeholder={docName ?? 'doc name'} style={{ width: 110 }} />
               <button className="tool" onClick={() => void rename(
-                (document.getElementById('doc-rename') as HTMLInputElement).value)}>
+                field('doc-rename')?.value ?? '')}>
                 rename</button>
             </div>
             <button className="tool" onClick={() => void copyLink('viewer')}>
@@ -779,8 +781,8 @@ export default function App() {
                 {role === 'owner' && <option value="admin">admin</option>}
               </select>
               <button className="tool" onClick={() => void addMember(
-                (document.getElementById('share-login') as HTMLInputElement).value,
-                (document.getElementById('share-role') as HTMLSelectElement).value)}>
+                field('share-login')?.value ?? '',
+                field<HTMLSelectElement>('share-role')?.value ?? 'editor')}>
                 add</button>
             </div>
             {memberList && Object.entries(memberList).map(([l, r]) => (
