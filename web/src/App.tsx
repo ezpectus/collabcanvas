@@ -90,6 +90,16 @@ function Inspector({ editor, model }: {
   return (
     <aside className="history-panel inspector-panel">
       <b>{o.kind} · {id.slice(0, 8)}</b>
+      {(o.kind === 'line' || o.kind === 'path') && (
+        <div className="hist-row">
+          <span className="hist-seq">dash</span>
+          <select className="insp-input" value={str(o.props, 'dash') || 'solid'}
+            onChange={(e) =>
+              editor.applyProps(id, { dash: e.target.value })}>
+            <option>solid</option><option>dashed</option><option>dotted</option>
+          </select>
+        </div>
+      )}
       {o.kind === 'text' && (
         <div className="hist-row">
           <span className="hist-seq">align</span>

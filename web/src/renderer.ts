@@ -351,7 +351,11 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       ctx.lineTo(num(p, 'x2'), num(p, 'y2'))
       ctx.strokeStyle = stroke && stroke !== 'none' ? stroke : fill
       ctx.lineWidth = num(p, 'lineWidth', 2)
+      const dl = str(p, 'dash')
+      if (dl === 'dashed') ctx.setLineDash([8, 5])
+      else if (dl === 'dotted') ctx.setLineDash([2, 4])
       ctx.stroke()
+      ctx.setLineDash([])
       break
     case 'text': {
       if (fill === 'none') break
@@ -379,7 +383,11 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       for (const pt of pts) ctx.lineTo(pt.x, pt.y)
       ctx.strokeStyle = stroke && stroke !== 'none' ? stroke : fill
       ctx.lineWidth = num(p, 'lineWidth', 2)
+      const dp = str(p, 'dash')
+      if (dp === 'dashed') ctx.setLineDash([8, 5])
+      else if (dp === 'dotted') ctx.setLineDash([2, 4])
       ctx.stroke()
+      ctx.setLineDash([])
       break
     }
     case 'image': {
