@@ -213,6 +213,10 @@ export default function App() {
           rendererRef.current.markDirty()
         }
       }
+      if (e.key === 'm' && rendererRef.current) { // T-25: minimap
+        rendererRef.current.showMinimap = !rendererRef.current.showMinimap
+        rendererRef.current.markDirty()
+      }
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
       editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey)
     }

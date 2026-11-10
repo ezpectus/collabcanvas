@@ -1,3 +1,7 @@
+## 2026-11-10 (tiếp) — T-23/24/25 [D]
+- T-23: G snap-to-grid, grid adaptive density, path dùng brush
+- T-24: IOpJournal.Tail + GET /ops + history panel (audit, ko time-travel)
+- T-25: M minimap — dots + viewport rect, docBounds cached per version
 # Changelog — коммиты → файлы → таски
 
 Карта «коммит → файлы → таск» (та же конвенция, что в Notification

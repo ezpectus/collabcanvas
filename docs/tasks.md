@@ -569,8 +569,10 @@ bounded — không scan 10k), GET /ops?doc=&n=, panel "history"
 xóa tiền-sử, rewind thật không thể — panel là audit không phải
 time machine, chữ đó đã ghi trong code comment.
 
-## T-25 · Minimap · `todo` · S
-Второй canvas, bounds всего документа, viewport-rect.
+## T-25 · Minimap · `review` · S
+Xong: `m` toggle, screen-space overlay trong main canvas — dot per
+object + viewport rect; docBounds cache theo model.version. Mặc
+định off (10k dots vẫn tốn ~2ms/frame).
 
 ## T-26 · Auth + share-права · `todo` · L (сознательно отложено)
 Сейчас docId=секрет; /docs перечисляет всё. Нужен юзер-учёт —

@@ -21,6 +21,8 @@ export interface FrameStats {
 export class Renderer {
   /** T-23: grid visible while snap mode is on. */
   showGrid = false
+  /** T-25: minimap overlay, toggled with `m`. */
+  showMinimap = false
   readonly view: Viewport = { x: 80, y: 60, scale: 1 }
   private dirty = true
   private raf = 0
@@ -188,8 +190,67 @@ export class Renderer {
       ctx.fillText(u.clientId, c.x + 8 / v.scale, c.y - 4 / v.scale)
     }
 
+    // T-25: minimap — screen-space overlay (separate transform).
+    // Toggled with `m`; off by default since every object is a dot.
+    if (this.showMinimap) this.drawMinimap(ctx, dpr, view)
+
     this.stats.objects = this.model.objectCount()
     this.stats.drawn = drawn
+  }
+
+  /** Whole-doc bounds cached per model version — minimap + any
+   *  future "where am I" needs it; 10k-object scans aren't free. */
+  private docBounds: BBox | null = null
+  private docBoundsVer = -1
+  private getDocBounds(): BBox | null {
+    if (this.docBoundsVer === this.model.version) return this.docBounds
+    let b: BBox | null = null
+    for (const o of this.model.objects()) {
+      const ob = boundsOf(o)
+      if (!ob) continue
+      b = b
+        ? { x0: Math.min(b.x0, ob.x0), y0: Math.min(b.y0, ob.y0),
+            x1: Math.max(b.x1, ob.x1), y1: Math.max(b.y1, ob.y1) }
+        : ob
+    }
+    this.docBounds = b
+    this.docBoundsVer = this.model.version
+    return b
+  }
+
+  private drawMinimap(ctx: CanvasRenderingContext2D, dpr: number,
+    view: BBox): void {
+    const db = this.getDocBounds()
+    if (!db) return
+    const MW = 170, MH = 110, PAD = 10
+    const cw = this.canvas.width, ch = this.canvas.height
+    const mx = cw - (MW + PAD) * dpr, my = ch - (MH + PAD) * dpr
+    const bw = Math.max(1, db.x1 - db.x0), bh = Math.max(1, db.y1 - db.y0)
+    const s = Math.min(MW / bw, MH / bh) * 0.9
+    const ox = mx + ((MW - bw * s) / 2) * dpr, oy = my + ((MH - bh * s) / 2) * dpr
+    const px = (x: number) => ox + (x - db.x0) * s * dpr
+    const py = (y: number) => oy + (y - db.y0) * s * dpr
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.fillStyle = 'rgba(16,22,36,0.85)'
+    ctx.strokeStyle = '#3a4a6b'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.roundRect(mx, my, MW * dpr, MH * dpr, 6 * dpr)
+    ctx.fill(); ctx.stroke()
+
+    // Object dots — cheap fillRect each; at 10k this is ~1-2ms.
+    ctx.fillStyle = 'rgba(95,141,255,0.7)'
+    const d = Math.max(1.5, 2 * dpr)
+    for (const o of this.model.objects()) {
+      const ob = boundsOf(o)
+      if (ob) ctx.fillRect(px((ob.x0 + ob.x1) / 2) - d / 2,
+        py((ob.y0 + ob.y1) / 2) - d / 2, d, d)
+    }
+    // Viewport rect in world→map coords.
+    ctx.strokeStyle = '#e8eaf2'
+    ctx.strokeRect(px(view.x0), py(view.y0),
+      (view.x1 - view.x0) * s * dpr, (view.y1 - view.y0) * s * dpr)
   }
 
   /** Zoom so the whole world-bounds fits with padding (hotkey `1`). */
