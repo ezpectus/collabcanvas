@@ -444,7 +444,17 @@ honest edge); multi-select resize (общий bbox) НЕ сделан — гру
 
 ---
 
-## T-17 · Undo/redo — compensating ops · `todo` · M
+## T-17 · Undo/redo — compensating ops · `review` · M
+
+*Реализовано 2026-11-10 (`508eec6`). Per-client undo: инверсия
+захватывается до optimistic-apply, Ctrl+Z шлёт её как новые ops.
+Покрыты жесты (одна запись на drag), create/place/path, delete→
+Create-resurrect, group, duplicate, reorder, text commit. Кап 100.*
+
+**Honest edge:** Patch-инверсия пишет `null` для ключей, которых не
+было (в протоколе нет prop-delete) — рендер читает как default.
+Undo чужих правок — LWW: мой op новее и выигрывает, это честно
+для per-client модели, но юзер может «отменить» чужое действие.
 
 **Devin пишет:** локальный undo-стек на клиенте: каждый submit
 запоминает инверсию (перед записью читаем старые значения
@@ -461,7 +471,11 @@ queue на reconnect.
 
 ---
 
-## T-18 · Чужое выделение цветной рамкой · `todo` · XS
+## T-18 · Чужое выделение цветной рамкой · `review` · XS
+
+*Реализовано 2026-11-10 (`361547d`). selection едет в presence
+(уже было в протоколе); рамки цветом юзера, stale-id на удалённых
+объектах скипаются. Бот проверяет провод (18/18).*
 
 **Devin пишет:** `PresenceUpdate.selection` уже в протоколе —
 шлём selectedIds с presence; renderer рисует рамку цвета юзера
@@ -475,7 +489,15 @@ rate-limit дропах (хранится, фанаут режется — ок)
 
 ---
 
-## T-19 · Документы: список + шаринг · `todo` · M
+## T-19 · Документы: список + шаринг · `review` · M
+
+*Реализовано 2026-11-10 (`e117388`). Redis `docs` Set на join,
+`GET /docs` (fail-open []), `?doc=` + share-кнопка + select-picker,
+`Session.switchDoc` на том же коннекте. Бот-док виден в списке.*
+
+**Края:** docId — секретный URL, auth'а нет: перечисление через
+/docs открывает scraping-вектор (rate-limit на op, не на GET —
+задокументировано); удаления документов нет — список растёт.
 
 **Devin пишет:** index-эндпоинт списка docId (Redis scan или Set
 `docs`), имя doc в URL (`?doc=`), кнопка «share» = копия ссылки.
@@ -488,7 +510,12 @@ rate-limit дропах (хранится, фанаут режется — ок)
 
 ---
 
-## T-20 · Perf-harness: автоматические замеры · `todo` · S
+## T-20 · Perf-harness: автоматические замеры · `review` · S
+
+*Реализовано 2026-11-10. `tests/perf.mjs`: tsc-emit реальных
+модулей (без новых deps) → 10k/50k замеры индекса/cull/objects() +
+op RTT через живой API. Цифры в README. Canvas draw-calls headless
+не гоняются — честно отмечено.*
 
 **Devin пишет:** витрина perf: автотест рендер-кадра на 10k
 (headless-canvas нет — Node bench на SceneIndex+draw-list сборку),

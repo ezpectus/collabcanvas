@@ -8,6 +8,20 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-10 — T-16..T-20 финиш бэклога [D]
+
+- T-16 verify: `geometry.computeResize` (pure) + `resize.test.mjs`
+  (9/9 — anchors pixel-fixed incl rot90, aspect, clamp)
+- T-18: selection в presence-проводе; рамки чужого выделения
+  цветом юзера; quadOf → geometry; bot +1 сценарий (18/18)
+- T-17: undo/redo compensating ops — инверсии до apply, Ctrl+Z/Y;
+  gesture = одна запись; null для отсутствовавших ключей
+- T-19: `docs` Set на join, `GET /docs`, `?doc=` + share + picker,
+  `Session.switchDoc`, `model.reset`
+- T-20: `tests/perf.mjs` — реальные цифры (10k/50k index+cull,
+  op RTT p50=1.1ms) → README; tsc-emit хак без новых deps
+- Диск C: 82.4GB free (−5GB за 10 дней), факт в AGENTS.md
+
 ## 2026-11-09 — T-16 WIP + план на утро [D+docs]
 
 - `web/src/editor.ts` — HANDLE_DIRS (8 шт), `handlePoints`, дельта

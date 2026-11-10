@@ -69,11 +69,18 @@ are all live.
 | Presence: TTL expiry, rate-limited fanout, disconnect path | `PresenceTests` |
 | Fractional index: 500 inserts, no precision exhaustion | `FractionalIndexTests` |
 
-**Not proven automatically:** 10k @ 60fps is verified by eye against
-the stats overlay (`drawn`/`drawMs`/`fps`) — no perf harness in CI.
-Redis-backed paths (Stream journal, pub/sub transport, owner claims)
-are exercised by smoke, not unit tests — everything behind
-`IOpJournal`/`IRoomTransport` is tested on in-memory twins.
+**Measured (`tests/perf.mjs`, Node 24, this machine):**
+10k objects — SceneIndex build 16ms, `objects()` scan 8ms,
+viewport cull <1ms, hit-test <0.1ms; 50k — 72ms / 32ms / 3ms /
+<0.1ms. Op submit→echo RTT over live SignalR: p50 1.1ms, p99 1.3ms
+(n=200). E2E wire contract verified live by `tests/bot.mjs`
+(18 scenarios).
+
+**Still eyeballed:** actual 60fps rendering (canvas draw calls can't
+run headless — the harness measures the CPU work AROUND the draw).
+Redis-backed paths are exercised by live runs, not unit tests —
+everything behind `IOpJournal`/`IRoomTransport` is tested on
+in-memory twins.
 
 ## Layout
 
