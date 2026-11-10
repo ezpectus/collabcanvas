@@ -1,3 +1,17 @@
+## 2026-11-10 (продолжение) — T-26..T-34 + bugfix pass [D]
+
+- T-27: draggable line endpoints + arrow nudge (a175bd0); esc/ctrl+a (904c81d)
+- T-28: layers panel — z-sorted, click selects+zooms (9ee3c9d)
+- z-step ctrl+bracket single (15d7cce); help overlay ? (466f072)
+- T-29 hit-test: stroke-distance line/path (aa32ef6), quad для rot (8589c57)
+- fontSize +/- (c574d4f); shift+marquee аддитив (5842c80)
+- T-32: DELETE /docs/{id} delist + unlist btn (a578740)
+- Esc cancel жеста (55641e2) + revert только gesture-ключей (5220693)
+- T-30 alignment guides (9a8b8bc); roadmap resync (30c8e91)
+- T-33 align+distribute (d8511bf, 1ba0c3c)
+- bot покрывает /ops + DELETE, сам делистит doc (9f2fe32)
+- T-34 group resize union-box (fec4b74); shift+1 zoom-selection (6eb452b)
+
 ## 2026-11-10 (tiếp) — T-23/24/25 [D]
 - T-23: G snap-to-grid, grid adaptive density, path dùng brush
 - T-24: IOpJournal.Tail + GET /ops + history panel (audit, ko time-travel)
