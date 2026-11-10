@@ -8,6 +8,27 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-10 — T-44..T-51 жизненный цикл + социальные фичи [D]
+
+- T-44: link list + revoke в share-панели — линк больше не слепнет
+  после копирования (1de4535)
+- T-45: DELETE ?hard=1 — необратимый destroy owner'ом: members/
+  links/meta/журнал/blobs/индексы + tombstone doc:{id}:dead против
+  воскрешения через legacy-open; бот +9 (1de4535)
+- T-46: POST /owner — передача места члену, себя в admin; бот +4
+  (8dfbad8)
+- T-47: /auth/password — verify→rehash→убить чужие сессии
+  (индекс user:{id}:sess); бот +6 (8dfbad8)
+- T-48: doc comments — doc:{id}:comments hash, hub Add/DeleteComment
+  с per-call ролью, REST GET, панель; бот +8 (c2e8c65); флейк-фикс:
+  broadcast ждётся через waitFor (3b6823c)
+- T-49: group isolation — dblclick внутрь тега, жесты видят только
+  членов, чужие dimmed, esc/outside/ungroup выходят (1f83e84)
+- T-50: co-typing — кейстрок = живой Patch; escape-реверт уехал по
+  проводу (локальный расходился с сервером) (a4d1ef9)
+- T-51: touch — pointer events + pinch-zoom/pan по midpoint,
+  pointer capture (fe431ed)
+
 ## 2026-11-10 — T-43 + охота за дырами [D]
 
 - T-43: link expiry — ttlHours 1..720, lazy self-delete, UI exp-поле

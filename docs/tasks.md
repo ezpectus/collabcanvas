@@ -745,3 +745,72 @@ UI: поле «exp h» в share-панели, пусто = навсегда (п�
 Бот: mint с ttl, 400 на out-of-range, expired-грант посеян прямо
 в Redis и отказан на join (API клампит ≥1ч — ждать нельзя).
 Край: истёкшие гранты висят в хеше до первого чтения — sweep'а нет.
+
+## T-44 · Link list + revoke UI · `review` · XS
+Share-панель показывает живые гранты (GET /links): роль · обрезанный
+токен · copy-URL · kill (DELETE /links/{token}). До этого линк после
+копирования слепнул — отозвать было нечего смотреть. Минт перезагружает
+список. Коммит `1de4535`.
+Край: экспайри в листинге не показывается (API отдаёт только роль).
+
+## T-45 · Hard delete дока · `review` · S
+`DELETE /docs/{id}?hard=1` — owner-only, необратимо: members, links,
+meta, журнал, снапшот, owner-claim, ВСЕ blob-ключи (закрывает часть
+blob-GC), индексы docs/owned:docs/user:*:docs. Tombstone
+`doc:{id}:dead` блокирует воскрешение через legacy-open ветку —
+проверяется первой в CallerRole и EffectiveRole. Живые сокеты
+теряют права на следующем op (per-op recheck). UI: destroy doc в
+share-панели owner'а с confirm. Коммит `1de4535`. Бот: 9 чеков.
+Край: tombstone-ключи копятся по одному на удалённый док — sweep
+не нужен, но факт задокументирован.
+
+## T-46 · Ownership transfer · `review` · XS
+`POST /docs/{id}/owner {login}` — только owner, цель = существующий
+не-owner член (незнакомцу/линку отдать нельзя). Бывший owner падает
+в admin — права на управление остаются, destroy/transfer уходят.
+UI: кнопка own у member-строки. Коммит `8dfbad8`. Бот: 4 чека.
+
+## T-47 · Password change · `review` · XS
+`POST /auth/password {old,new}` — Bearer, verify old → rehash →
+убивает ВСЕ сессии кроме текущей (утёкший токен умирает с паролем).
+Индекс `user:{id}:sess` — set живых токенов, пишется в NewSession,
+чищается в Logout. UI: кнопка pass → два prompt. Коммит `8dfbad8`.
+Бот: 6 чеков (tok2 умирает, tok1 живёт, старый пароль 401).
+Край: токены, минтованные до индекса, сет не видит — самоисправится.
+
+## T-48 · Doc comments · `review` · M
+Комменты — НЕ doc-state: `doc:{id}:comments` hash, без LWW/журнала/
+undo (разговор, не канвас). Hub `AddComment` (editor+, cap 500×1000)
++ `DeleteComment` (автор или admin+, чужое молча 404-эквивалентно),
+бродкаст `comment` add/del на группу. REST GET для бэклога (viewer+).
+Гость на edit-линке = `guest·conn6`. UI: chat-кнопка + панель с
+Enter-send. Коммит `c2e8c65` + бот-фикс `3b6823c`. Бот: 8 чеков.
+Край: гость не может удалить свою строку (author=guest·xxx ≠ login).
+Край: destroy чистит comments-ключ (в DestroyAsync).
+
+## T-49 · Group isolation · `review` · S
+Dblclick по члену группы → `editor.isolated=tag`: pick/hitTest,
+marquee, Ctrl+A видят только членов тега; tag-expansion клика
+выключена (член = индивидуален внутри). Чужие объекты dimmed 0.22
+(renderer getIsolation). Выход: Esc / dblclick в пустоту / ungroup /
+ленивая проверка «тег умер». Коммит `1f83e84`. Клиентская логика —
+бот не покрывает; край: чужой объект над членом блокирует клик
+(topmost wins, как в Figma).
+
+## T-50 · Co-typing · `review` · XS
+Кейстрок в textarea = живой `session.submit('Patch')` вместо
+applyLocal — оптимистичный local+wire в одном вызове, никакой
+новой механики (dedup/replay/rate-limit уже на месте). Escape-реверт
+теперь тоже едет по проводу — локальный реверт расходился с сервером.
+Whole-string LWW: два пишущих в одно поле → last-write, не per-char
+(документировано; CRDT = другая операционная модель). Коммит `a4d1ef9`.
+Край: 1 op на кейстрок — при 15 зн/с и 120/s лимите запас честный.
+
+## T-51 · Touch: pointer events + pinch · `review` · S
+onMouse* → onPointer* (мышь/перо/палец едино). Один палец = жест
+активного инструмента; второй палец → pinch: zoom по отношению
+дистанций в midpoint + pan по дельте midpoint. setPointerCapture
+на канвасе. `touch-action:none` уже стоял. Panning-мышь (middle/
+space) сохранена. Коммит `fe431ed`. Бот не покрывает (UI-слой).
+Край: тулбар не адаптирован под узкие экраны — жесты работают,
+компоновка desktop-first.
