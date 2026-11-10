@@ -368,6 +368,9 @@ export default function App() {
           onClick={() => setPaintMode(
             paintMode === 'stroke' ? 'fill' : 'stroke')}>
           {paintMode}</button>
+        <button className="tool" title="no fill / no stroke (hollow)"
+          onClick={() => editor().applyColor('none',
+            paintMode === 'stroke')}>⊘</button>
         <button onClick={() => {
           // T-22: export — the canvas is already a bitmap; toDataURL
           // is the whole job. Remote cursors/handles are frame

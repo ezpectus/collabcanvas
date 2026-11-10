@@ -319,28 +319,30 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
   }
   switch (o.kind) {
     case 'rect':
-      ctx.fillStyle = fill
-      ctx.fillRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10))
-      if (stroke) { ctx.strokeStyle = stroke; ctx.strokeRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10)) }
+      if (fill !== 'none') {
+        ctx.fillStyle = fill
+        ctx.fillRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10))
+      }
+      if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.strokeRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10)) }
       break
     case 'ellipse': {
       const x = num(p, 'x'), y = num(p, 'y'), w = num(p, 'w', 10), h = num(p, 'h', 10)
       ctx.beginPath()
       ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
-      ctx.fillStyle = fill
-      ctx.fill()
-      if (stroke) { ctx.strokeStyle = stroke; ctx.stroke() }
+      if (fill !== 'none') { ctx.fillStyle = fill; ctx.fill() }
+      if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.stroke() }
       break
     }
     case 'line':
       ctx.beginPath()
       ctx.moveTo(num(p, 'x1'), num(p, 'y1'))
       ctx.lineTo(num(p, 'x2'), num(p, 'y2'))
-      ctx.strokeStyle = stroke || fill
+      ctx.strokeStyle = stroke && stroke !== 'none' ? stroke : fill
       ctx.lineWidth = num(p, 'lineWidth', 2)
       ctx.stroke()
       break
     case 'text':
+      if (fill === 'none') break
       ctx.fillStyle = fill
       ctx.font = `${num(p, 'fontSize', 16)}px sans-serif`
       ctx.fillText(str(p, 'text', '…'), num(p, 'x'), num(p, 'y'))
@@ -351,7 +353,7 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       ctx.beginPath()
       ctx.moveTo(pts[0]!.x, pts[0]!.y)
       for (const pt of pts) ctx.lineTo(pt.x, pt.y)
-      ctx.strokeStyle = stroke || fill
+      ctx.strokeStyle = stroke && stroke !== 'none' ? stroke : fill
       ctx.lineWidth = num(p, 'lineWidth', 2)
       ctx.stroke()
       break

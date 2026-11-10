@@ -167,7 +167,8 @@ export class Editor {
   /** T-22: repaint the selection with the current brush. Stroke for
    *  line/path, fill otherwise — matches what the renderer reads. */
   applyColor(c: string, strokeMode = false): void {
-    this.color = c
+    if (c !== 'none') this.color = c // brush tracks real colors only —
+                                     // 'none' would birth invisible ghosts
     const inv: WireOp[] = [], fwd: WireOp[] = []
     for (const id of this.mutable()) {
       const o = this.find(id)
