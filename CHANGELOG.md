@@ -8,6 +8,20 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-09 — T-15 + e2e-бот + validator-fix [D]
+
+- `web/src/App.tsx` — TextEditor overlay (dblclick/click-place →
+  textarea; applyLocal на keystroke, Patch на commit; Esc-откат)
+- `web/src/editor.ts` — `wantEdit`/`takeEditRequest`, `dblClick`,
+  click-place text открывает редактор вместо Delete
+- `web/src/App.css` — `.text-editor`
+- `Core/Protocol/OpValidator.cs` — text/points caps в ValidateProps:
+  Patch-обход закрыт (находка бота, не юнит-тестов)
+- `tests/bot.mjs` — e2e-бот: 2 SignalR-клиента, Node 24 native
+  fetch/WS, deps из web/node_modules; 17 сценариев живьём
+- docs: tasks T-15 → review, план следующей сессии, PLAN журнал,
+  AGENTS — правило обоснования новых технологий
+
 ## 2026-11-08 — бэклог T-15..T-20 [docs]
 
 - `tasks.md` — хвост работы: inline-текст, 8-хендл resize, undo,
