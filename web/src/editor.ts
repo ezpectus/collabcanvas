@@ -40,6 +40,9 @@ type WireOp = { type: OpType; payload: Record<string, unknown> }
 export class Editor {
   tool: Tool = 'select'
   readonly selected = new Set<string>()
+  /** T-22: current brush — new objects take it, applyColor repaints
+   *  the selection. fill for closed shapes, stroke for line/path. */
+  color = '#3d5af1'
   /** Text object asking for the inline editor (dblclick / click-place).
    *  The overlay lives in React-land — the editor only flags the id. */
   private wantEdit: string | null = null
@@ -123,6 +126,22 @@ export class Editor {
     this.undoStack.push(e)
     this.redraw()
   }
+  /** T-22: repaint the selection with the current brush. Stroke for
+   *  line/path, fill otherwise — matches what the renderer reads. */
+  applyColor(c: string): void {
+    this.color = c
+    const inv: WireOp[] = [], fwd: WireOp[] = []
+    for (const id of this.selected) {
+      const o = this.find(id)
+      if (!o) continue
+      const key = (o.kind === 'line' || o.kind === 'path') ? 'stroke' : 'fill'
+      inv.push({ type: 'Patch', payload: { id, props: { [key]: o.props[key] ?? null } } })
+      fwd.push({ type: 'Patch', payload: { id, props: { [key]: c } } })
+    }
+    if (fwd.length) this.recordUndo(inv, fwd)
+    for (const op of fwd) this.session.submit('Patch', op.payload)
+  }
+
   /** Text overlay commit — routed through the editor so undo sees it. */
   commitText(id: string, text: string): void {
     const old = this.find(id)?.props['text']
@@ -213,9 +232,9 @@ export class Editor {
       return
     }
     const props = this.tool === 'line'
-      ? { x1: wx, y1: wy, x2: wx, y2: wy, stroke: '#e8eaf2', lineWidth: 2 }
+      ? { x1: wx, y1: wy, x2: wx, y2: wy, stroke: this.color, lineWidth: 2 }
       : { x: wx, y: wy, w: 1, h: 1, rot: 0,
-          fill: '#3d5af1', text: this.tool === 'text' ? 'text' : undefined,
+          fill: this.color, text: this.tool === 'text' ? 'text' : undefined,
           fontSize: 16 }
     this.session.submit('Create', { id, kind: this.tool, z: this.topZ(), props })
     this.selected.clear(); this.selected.add(id)

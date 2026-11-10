@@ -248,6 +248,18 @@ export default function App() {
             {t}
           </button>
         ))}
+        <input type="color" className="swatch" title="brush color"
+          defaultValue="#3d5af1"
+          onChange={(e) => editor().applyColor(e.target.value)} />
+        <button onClick={() => {
+          // T-22: export — the canvas is already a bitmap; toDataURL
+          // is the whole job. Remote cursors/handles are frame
+          // artifacts and go into the png too (honest edge).
+          const a = document.createElement('a')
+          a.href = canvasRef.current!.toDataURL('image/png')
+          a.download = `${docId}.png`
+          a.click()
+        }}>PNG</button>
         <button onClick={() => stress(10_000)}>Stress 10k</button>
         <button onClick={() => stress(0)}>Clear</button>
         {stats && (

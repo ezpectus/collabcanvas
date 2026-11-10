@@ -34,3 +34,4 @@ button.tool.active { background: #3d5af1; }
                border-radius: 4px; background: #16161ecc; color: #e8eaf2;
                font-family: sans-serif; padding: 2px 4px; resize: none;
                overflow: hidden; outline: none; z-index: 10; }
+.swatch { width: 28px; height: 24px; padding: 0; border: 1px solid #3a4a6b; border-radius: 4px; background: none; cursor: pointer }
