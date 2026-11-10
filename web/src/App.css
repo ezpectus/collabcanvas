@@ -44,3 +44,5 @@ button.tool.active { background: #3d5af1; }
 .hist-row { cursor: pointer }
 .hist-row:hover { background: rgba(95,141,255,.12) }
 .hist-row.sel { background: rgba(95,141,255,.25) }
+.help-panel { left: 50%; right: auto; transform: translateX(-50%); width: 300px }
+.help-panel .hist-seq { min-width: 105px }

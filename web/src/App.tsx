@@ -150,6 +150,7 @@ export default function App() {
   // T-28: layers panel — the find-your-object surface. At 10k objects
   // canvas clicking alone can't locate things; z-sorted list can.
   const [showLayers, setShowLayers] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const pickFromLayers = useCallback((id: string) => {
     const ed = editor()
     ed.selected.clear(); ed.selected.add(id)
@@ -230,6 +231,7 @@ export default function App() {
         rendererRef.current.showMinimap = !rendererRef.current.showMinimap
         rendererRef.current.markDirty()
       }
+      if (e.key === '?') setShowHelp((h) => !h) // undiscoverable otherwise
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
       editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey)
     }
@@ -376,6 +378,28 @@ export default function App() {
                 <span className="hist-type">{o.kind}</span>
                 <span className="hist-who">
                   {str(o.props, 'text') || o.id.slice(0, 8)}</span>
+              </div>
+            ))}
+          </aside>
+        )}
+        {showHelp && (
+          <aside className="history-panel help-panel">
+            <b>Shortcuts</b>
+            {([
+              ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
+              ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
+              ['8 handles', 'resize · shift=aspect alt=center'],
+              ['shift+BR drag', 'rotate'], ['arrows', 'nudge · shift=10'],
+              ['ctrl+arrows', '—'], ['ctrl+d', 'duplicate'],
+              ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
+              ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
+              ['ctrl+a / esc', 'all / deselect'], ['g', 'grid+snap'],
+              ['m', 'minimap'], ['1', 'zoom fit'], ['space+drag', 'pan'],
+              ['wheel', 'zoom'], ['?', 'this panel'],
+            ] as const).map(([k, d]) => (
+              <div key={k} className="hist-row">
+                <span className="hist-seq">{k}</span>
+                <span className="hist-who">{d}</span>
               </div>
             ))}
           </aside>
