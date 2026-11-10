@@ -588,6 +588,56 @@ ok('pw: old password dead, new one works',
   (await authPost('login', { login: u9, password: 'newpw123' }))
     .status === 200)
 
+// --- comments: hub add/del + REST list; viewer can't post, a
+// stranger member can't delete somebody else's row.
+const u10 = `co_${Date.now().toString(36)}`
+const reg10 = await (await authPost('register',
+  { login: u10, password: 'secretpw' })).json()
+const OWN9 = (await (await authed('/docs', reg10.token,
+  { method: 'POST' })).json()).id
+await authed(`/docs/${OWN9}/members`, reg10.token,
+  { method: 'POST', body: JSON.stringify({ login: u8, role: 'editor' }) })
+await authed(`/docs/${OWN9}/members`, reg10.token,
+  { method: 'POST', body: JSON.stringify({ login: u6, role: 'viewer' }) })
+const CM = client(u8, reg8.token)
+await CM.start()
+await CM.join(0, OWN9)
+const cGot = []
+CM.conn.on('comment', (m) => cGot.push(m))
+const cRec = await CM.conn.invoke('AddComment', OWN9, 'hello canvas')
+ok('comments: add returns a record', !!cRec && cRec.id?.length > 0)
+ok('comments: add broadcast lands',
+  cGot.some((m) => m.kind === 'add' && m.id === cRec.id))
+const cList = await (await authed(
+  `/docs/${OWN9}/comments`, reg10.token)).json()
+ok('comments: REST list has the row',
+  cList.some((c) => c.id === cRec.id && c.t === 'hello canvas'))
+const CV = client(u6, reg6.token)
+await CV.start()
+await CV.join(0, OWN9)
+ok('comments: viewer post denied',
+  String(await CV.conn.invoke('AddComment', OWN9, 'nope')
+    .catch(e => e)).includes('forbidden'))
+const CX = client(u10, reg10.token) // owner, not the author
+await CX.start()
+await CX.join(0, OWN9)
+ok('comments: admin+ deletes a stranger\'s row',
+  (await CX.conn.invoke('DeleteComment', OWN9, cRec.id)
+    .then(() => 'ok').catch(e => String(e))) === 'ok')
+ok('comments: del broadcast lands',
+  cGot.some((m) => m.kind === 'del' && m.id === cRec.id))
+const cDel = client(u8, reg8.token) // editor, not author
+await cDel.start()
+await cDel.join(0, OWN9)
+const cRec2 = await CX.conn.invoke('AddComment', OWN9, 'owners row')
+ok('comments: editor cannot delete another\'s row',
+  String(await cDel.conn.invoke('DeleteComment', OWN9, cRec2.id)
+    .catch(e => e)).includes('forbidden'))
+ok('comments: guest REST denied',
+  (await fetch(`${API}/docs/${OWN9}/comments`)).status === 403)
+await CM.conn.stop(); await CV.conn.stop()
+await CX.conn.stop(); await cDel.conn.stop()
+
 console.log(failures === 0
   ? `\n${tag}: ALL SCENARIOS PASSED`
   : `\n${tag}: ${failures} check(s) FAILED`)

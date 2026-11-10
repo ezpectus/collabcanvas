@@ -35,6 +35,11 @@ export class Session {
   /** Fired after any state change worth a redraw. */
   onChange: (() => void) | null = null
   onPresence: (() => void) | null = null
+  /** Doc-level comments — not doc state, just conversation rows.
+      Live adds/dels arrive on the 'comment' broadcast; the initial
+      list is a REST fetch (App owns the fetch). */
+  readonly comments = new Map<string, { a: string; t: string; ts: number }>()
+  onComments: (() => void) | null = null
 
   /** T-26: server-resolved doc role — set on every (re)join. UI may
       hide tools on 'viewer'; enforcement is server-side, always. */
@@ -59,6 +64,7 @@ export class Session {
     token?: string | null, grant?: string | null): Promise<void> {
     this.docId = docId
     this.clientId = clientId
+    this.comments.clear() // comments belong to the previous doc
     this.grant = grant ?? null
     this.token = token ?? null
     const conn = new signalR.HubConnectionBuilder()
@@ -88,11 +94,28 @@ export class Session {
       this.cursors.delete(l.clientId)
       this.onPresence?.()
     })
+    conn.on('comment', (m: {
+      kind: string; id: string; a?: string; t?: string; ts?: number
+    }) => {
+      if (m.kind === 'add')
+        this.comments.set(m.id, { a: m.a!, t: m.t!, ts: m.ts! })
+      else this.comments.delete(m.id)
+      this.onComments?.()
+    })
     conn.onreconnected(() => { void this.rejoin() })
 
     await conn.start()
     this.conn = conn
     await this.rejoin(0)
+  }
+
+  /** Comments ride the hub (not ops): add/del get a per-call role
+      re-check server-side, same revocation semantics as SubmitOp. */
+  async addComment(text: string): Promise<void> {
+    await this.conn?.invoke('AddComment', this.docId, text)
+  }
+  async delComment(cid: string): Promise<void> {
+    await this.conn?.invoke('DeleteComment', this.docId, cid)
   }
 
   /** (Re)join: server decides tail vs snapshot from our lastSeq; then

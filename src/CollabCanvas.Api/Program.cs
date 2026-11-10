@@ -19,6 +19,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<CollabCanvas.Api.P
 builder.Services.AddHostedService<CollabCanvas.Api.Presence.PresenceSweeper>();
 builder.Services.AddSingleton<CollabCanvas.Api.Auth.UserStore>();
 builder.Services.AddSingleton<CollabCanvas.Api.Auth.MembershipStore>();
+builder.Services.AddSingleton<CollabCanvas.Api.Comments.DocCommentStore>();
 // Redis is the journal (T-5) — the app must boot without it.
 // AbortOnConnectFail=false: the mux returns immediately and retries
 // in the background; /health reports "degraded" until it lands.
@@ -180,6 +181,24 @@ app.MapPost("/docs/{id}/links", async (
     }
     var token = await members.NewLinkAsync(id, role.Value, ttl);
     return Results.Ok(new { token, role = CollabCanvas.Api.Auth.MembershipStore.Name(role.Value) });
+});
+
+// Comments list — initial load for the panel; live adds/dels ride
+// the hub "comment" broadcast. Viewer+ can read, writes are hub-only.
+app.MapGet("/docs/{id}/comments", async (
+    string id,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users,
+    CollabCanvas.Api.Comments.DocCommentStore comments,
+    HttpRequest req) =>
+{
+    var g = req.Query["grant"].ToString();
+    var caller = await CallerRole(members, users, req, id,
+        string.IsNullOrEmpty(g) ? null : g);
+    if (caller is null) return Results.StatusCode(403);
+    var cs = await comments.ListAsync(id);
+    return Results.Ok(cs.Select(c => new
+        { id = c.Id, a = c.Author, t = c.Text, ts = c.Ts }));
 });
 
 app.MapDelete("/docs/{id}/links/{token}", async (

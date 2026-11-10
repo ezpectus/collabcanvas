@@ -22,7 +22,8 @@ public sealed class DocumentHub(
     OpRateLimiter opLimit,
     StackExchange.Redis.IConnectionMultiplexer redis,
     CollabCanvas.Api.Auth.UserStore users,
-    CollabCanvas.Api.Auth.MembershipStore members) : Hub
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Comments.DocCommentStore comments) : Hub
 {
     /// T-26: resolve the SignalR access_token once at connect; the
     /// login becomes the trusted presence name (Name in PresenceUpdate
@@ -175,6 +176,45 @@ public sealed class DocumentHub(
             // fanout instead of OthersInGroup is fine.
             await transport.PublishPresenceAsync(
                 new PresenceBroadcast(update.ClientId, named));
+    }
+
+    // ---- doc-level comments (not doc state — conversation metadata)
+    public async Task<object?> AddComment(string docId, string text)
+    {
+        var role = await EffectiveRole(docId,
+            Context.Items["grant"] as string);
+        if (role is null || role < CollabCanvas.Api.Auth.RoomRole.Editor)
+            throw new HubException("forbidden");
+        var t = text?.Trim() ?? "";
+        if (t.Length is 0 || t.Length > CollabCanvas.Api.Comments.DocCommentStore.MaxLen)
+            throw new HubException("bad text");
+        // Guests on edit-links comment as guest·conn6 — a bare
+        // "guest" for everyone is useless in a thread.
+        var author = Context.Items["login"] as string
+            ?? $"guest·{Context.ConnectionId[..6]}";
+        var rec = await comments.AddAsync(docId, author, t);
+        if (rec is null) throw new HubException("comment cap reached");
+        await Clients.Group(docId).SendAsync("comment",
+            new { kind = "add", id = rec.Id, a = rec.Author, t = rec.Text, ts = rec.Ts });
+        return rec;
+    }
+
+    /// <summary>Author or admin+ may delete; the cid just disappearing
+    /// for strangers is the safe shape (no "exists but not yours"
+    /// oracle).</summary>
+    public async Task DeleteComment(string docId, string cid)
+    {
+        var role = await EffectiveRole(docId,
+            Context.Items["grant"] as string);
+        if (role is null) throw new HubException("forbidden");
+        var rec = await comments.GetAsync(docId, cid);
+        if (rec is null) return;
+        var who = Context.Items["login"] as string;
+        if (role < CollabCanvas.Api.Auth.RoomRole.Admin && rec.Author != who)
+            throw new HubException("forbidden");
+        await comments.RemoveAsync(docId, cid);
+        await Clients.Group(docId).SendAsync("comment",
+            new { kind = "del", id = cid });
     }
 
     /// <summary>Socket died — kill the cursor now instead of letting it

@@ -368,6 +368,38 @@ export default function App() {
     if (res.ok) { setRole('admin'); void loadMembers() }
     else setShareErr(`transfer failed: ${res.status}`)
   }, [authedFetch, docId, loadMembers])
+  // Doc comments — live deltas ride the hub 'comment' broadcast into
+  // session.comments; REST GET fills the backlog on panel open.
+  const [showComments, setShowComments] = useState(false)
+  const [commentRows, setCommentRows] = useState<
+    { id: string; a: string; t: string; ts: number }[]>([])
+  const syncComments = useCallback(() => {
+    const s = session()
+    setCommentRows([...s.comments.entries()]
+      .map(([id, c]) => ({ id, ...c }))
+      .sort((x, y) => x.ts - y.ts))
+  }, [])
+  const loadComments = useCallback(async () => {
+    const q = grant ? `?grant=${encodeURIComponent(grant)}` : ''
+    try {
+      const res = await authedFetch(
+        `/docs/${encodeURIComponent(docId)}/comments${q}`)
+      if (!res.ok) return
+      const list = await res.json() as typeof commentRows
+      const s = session()
+      s.comments.clear()
+      for (const c of list) s.comments.set(c.id, c)
+      syncComments()
+    } catch { /* empty panel on failure — non-fatal */ }
+  }, [authedFetch, docId, grant, syncComments])
+  const sendComment = useCallback(async (text: string) => {
+    if (!text.trim()) return
+    try { await session().addComment(text) }
+    catch { setShareErr('comment rejected') }
+  }, [])
+  const delComment = useCallback(async (cid: string) => {
+    try { await session().delComment(cid) } catch { /* vetoed */ }
+  }, [])
   // T-27: doc name lives in doc:{id}:meta — rename is admin+.
   const [docName, setDocName] = useState<string | null>(null)
   const loadMeta = useCallback(async () => {
@@ -443,6 +475,7 @@ export default function App() {
       const s = session()
       s.onChange = markDirty
       s.onPresence = markDirty
+      s.onComments = syncComments
       await s.join(docId, clientId.current, '/hubs/document', token, grant)
       setRole(s.role)
       setState('joined')
@@ -472,6 +505,9 @@ export default function App() {
     if (showShare && canManage)
       { void loadMembers(); void loadMeta(); void loadLinks() }
   }, [showShare, canManage, loadMembers, loadMeta, loadLinks])
+  useEffect(() => {
+    if (showComments && state === 'joined') void loadComments()
+  }, [showComments, state, loadComments])
 
   // Tool hotkeys + Delete.
   useEffect(() => {
@@ -613,6 +649,8 @@ export default function App() {
             </select>
             <button className={showShare ? 'tool active' : 'tool'}
               onClick={() => setShowShare(!showShare)}>share</button>
+            <button className={showComments ? 'tool active' : 'tool'}
+              onClick={() => setShowComments(!showComments)}>chat</button>
             <button className="tool" title="remove this doc from the shared list"
               onClick={() => void (async () => {
                 // T-32: delist only — journal survives; rejoining re-adds.
@@ -864,6 +902,39 @@ export default function App() {
               <button className="tool" style={{ color: '#e08080' }}
                 onClick={() => void destroyDoc()}>
                 destroy doc</button>
+            )}
+          </aside>
+        )}
+        {showComments && state === 'joined' && (
+          <aside className="history-panel">
+            <b>Comments</b>
+            {commentRows.map((c) => (
+              <div className="hist-row" key={c.id}>
+                <span className="hist-who">{c.a}</span>
+                <span style={{ flex: 1 }}>{c.t}</span>
+                {/* guests (author guest·xxx) can't delete their own —
+                    server compares the stored author to your login */}
+                {(c.a === login || canManage) && (
+                  <button className="tool"
+                    onClick={() => void delComment(c.id)}>×</button>
+                )}
+              </div>
+            ))}
+            {commentRows.length === 0 && <i>no comments</i>}
+            {role !== 'viewer' && (
+              <div className="hist-row" style={{ gap: 4 }}>
+                <input className="insp-input" id="comment-new"
+                  placeholder="say something…" style={{ flex: 1 }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    void sendComment(field('comment-new')?.value ?? '')
+                    if (field('comment-new')) field('comment-new')!.value = ''
+                  }} />
+                <button className="tool" onClick={() => {
+                  void sendComment(field('comment-new')?.value ?? '')
+                  if (field('comment-new')) field('comment-new')!.value = ''
+                }}>send</button>
+              </div>
             )}
           </aside>
         )}

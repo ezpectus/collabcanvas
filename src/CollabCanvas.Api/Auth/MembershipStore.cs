@@ -157,6 +157,7 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
             MKey(docId), LKey(docId), $"doc:{docId}:meta",
             $"doc:{docId}:blobs", $"doc:{docId}:ops",
             $"doc:{docId}:snap", $"doc:{docId}:owner",
+            $"doc:{docId}:comments",
         })
             t.Add(batch.KeyDeleteAsync(k));
         t.Add(batch.SetRemoveAsync("docs", docId));
