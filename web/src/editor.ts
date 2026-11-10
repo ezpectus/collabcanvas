@@ -22,7 +22,7 @@ export type Quad = { x: number; y: number }[]
 
 interface Drag {
   mode: 'move' | 'resize' | 'rotate' | 'create' | 'marquee' | 'pan-hint'
-    | 'point'
+    | 'point' | 'gresize'
   startX: number
   startY: number
   /** orig props per dragged object — deltas apply to these */
@@ -168,6 +168,20 @@ export class Editor {
    *  coords (corners + edge midpoints of the rotated quad). Line/path
    *  get none — scaling a point set is a different op (honest edge). */
   handlePoints(): { x: number; y: number }[] {
+    // T-34: multi-select gets one BR handle on the union box —
+    // group scale is proportional from the TL anchor. Only box
+    // kinds participate (line/path have no x/y/w/h to scale).
+    if (this.selected.size >= 2) {
+      let u: BBox | null = null
+      for (const oid of this.selected) {
+        const o = this.find(oid)
+        const b = o && boundsOf(o)
+        if (!b || o!.props['x'] === undefined) continue
+        u = u ? { x0: Math.min(u.x0, b.x0), y0: Math.min(u.y0, b.y0),
+                  x1: Math.max(u.x1, b.x1), y1: Math.max(u.y1, b.y1) } : b
+      }
+      return u ? [{ x: u.x1, y: u.y1 }] : []
+    }
     if (this.selected.size !== 1) return []
     const o = this.find([...this.selected][0]!)
     if (!o) return []
@@ -197,10 +211,12 @@ export class Editor {
     if (hi >= 0) {
       const o = this.find([...this.selected][0]!)!
       this.drag = {
-        mode: o.kind === 'line' ? 'point'
+        mode: this.selected.size >= 2 ? 'gresize'
+          : o.kind === 'line' ? 'point'
           : shift && hi === 4 ? 'rotate' : 'resize',
         startX: wx, startY: wy,
-        orig: new Map([[o.id, { ...o.props }]]),
+        orig: new Map([...this.selected]
+          .map((id) => [id, { ...this.find(id)!.props }])),
         center: shift && hi === 4
           ? { x: (boundsOf(o)!.x0 + boundsOf(o)!.x1) / 2,
               y: (boundsOf(o)!.y0 + boundsOf(o)!.y1) / 2 }
@@ -325,6 +341,37 @@ export class Editor {
       const deg = ((a1 - a0) * 180) / Math.PI
       for (const [oid, orig] of d.orig)
         this.patchThrottled(oid, { rot: (num(orig, 'rot') + deg + 360) % 360 })
+      return
+    }
+
+    if (d.mode === 'gresize') {
+      // T-34: scale factor from the union box; TL anchors, BR follows
+      // the pointer. Per-axis unless Shift (uniform). Clamp 0.05.
+      let gb: BBox | null = null
+      const obs = new Map<string, BBox>()
+      for (const [oid, orig] of d.orig) {
+        const o = this.find(oid)
+        const b = o && boundsOf({ ...o, props: orig })
+        if (!o || !b || orig['x'] === undefined) continue
+        obs.set(oid, b)
+        gb = gb ? { x0: Math.min(gb.x0, b.x0), y0: Math.min(gb.y0, b.y0),
+                    x1: Math.max(gb.x1, b.x1), y1: Math.max(gb.y1, b.y1) } : b
+      }
+      if (gb) {
+        let sx = (wx - gb.x0) / Math.max(1, gb.x1 - gb.x0)
+        let sy = (wy - gb.y0) / Math.max(1, gb.y1 - gb.y0)
+        if (aspect) { const s = Math.min(sx, sy); sx = s; sy = s }
+        sx = Math.max(0.05, sx); sy = Math.max(0.05, sy)
+        for (const [oid, b] of obs) {
+          const x0n = gb.x0 + (b.x0 - gb.x0) * sx
+          const y0n = gb.y0 + (b.y0 - gb.y0) * sy
+          this.patchThrottled(oid, {
+            x: x0n, y: y0n,
+            w: Math.max(1, (b.x1 - b.x0) * sx),
+            h: Math.max(1, (b.y1 - b.y0) * sy),
+          })
+        }
+      }
       return
     }
 

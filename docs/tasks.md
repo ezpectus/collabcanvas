@@ -600,3 +600,10 @@ Alt+arrows — align к крайней грани выделения; Alt+H/Alt+
 Box-kinds only (у line/path нет x/y-якоря); выравнивание по AABB —
 для rot≠0 quad'а, что визуально корректно. Undo-aware. Distribute
 (равные промежутки) не сделан — следующий шаг, если нужен.
+
+## T-34 · Multi-select group resize · `review` · S
+Один BR-хендл на union-box при size>=2; scale TL-anchored,
+per-axis (Shift=uniform), clamp 0.05/1wu min. Только box-kinds —
+line/path не участвуют (нет x/y/w/h). Commit через общий жест-
+путь (одна undo-запись). Край: масштабируются x/y/w/h, rot не
+сохраняет пропорцию вокруг группового центра (упрощение).
