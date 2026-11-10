@@ -293,3 +293,4 @@ Engine). Закрытые таски — `docs/done-log.md`.
   quota, /ops grant, shareErr visibility (4aa7c3f); logout kills
   live socket rights, nosniff blobs, presence name on dead token
   (d672a59 + next)
+- T-43: link expiry — ttlHours 1..720, lazy self-delete, UI exp-поле (e677df6)
