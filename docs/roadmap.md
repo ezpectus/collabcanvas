@@ -36,8 +36,11 @@
 - ✅ Точный hit-test: stroke-distance для line/path, quad для rot≠0
   (T-29)
 - ⬜ Copy/paste, alignment-команды (align left/center, distribute)
-- ⬜ Группировка объектов, lock
-- ⬜ Поворот хендлом + числовой ввод свойств (inspector-панель)
+- ✅ Поворот хендлом над выделением (T-36) + inspector-панель:
+  числовой x/y/w/h/rot для всех скалярных типов (T-37)
+- ✅ Lock объектов — ctrl+shift+L, click-through, unlock через
+  layers (T-38; UX-гейт, не permission)
+- ⬜ Группировка объектов (parent-child схема в модели)
 - ⬜ Image: настоящая загрузка/превью (нужен blob storage — props 64KB)
 
 ## Мультиплеер (сильная сторона — уже на уровне Figma-ядра)
