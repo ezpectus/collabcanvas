@@ -18,3 +18,7 @@ dist/
 Thumbs.db
 nul
 *.tsbuildinfo
+
+# Local workflow — agent rules & process docs stay off GitHub
+AGENTS.md
+.devin/

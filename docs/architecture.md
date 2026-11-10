@@ -1,7 +1,7 @@
 # CollabCanvas — архитектура (T-1)
 
 Дизайн-док для ревью юзером. Читать с чеклистом
-`docs/guides/review_checklists.md` под рукой. Gate-вопросы — в
+`.devin/review_checklists.md` под рукой. Gate-вопросы — в
 конце. Источник истины о «как у настоящих» — блоги Figma
 (`figma.com/blog` — multiplayer, reliability, ordered sequences).
 
