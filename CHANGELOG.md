@@ -284,3 +284,6 @@ Engine). Закрытые таски — `docs/done-log.md`.
   revalidation, revoke на живом сокете; бот +9 (97eca9b)
 - T-26 stage 4: share-UI + viewer-mode; фикс фантома denied-ack
   (optimistic apply без отката → rejoin-ресинк) (коммит выше)
+- T-27: doc meta + PATCH rename, owner/admin гейт, бот +4 (0b262bb)
+- T-35: группировка по тегам — ctrl+g/ctrl+shift+g, клик-селект
+  по тегу, undo-aware (коммит выше)
