@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/hubs': { target: 'http://localhost:5237', ws: true },
       '/health': { target: 'http://localhost:5237' },
+      '/docs': { target: 'http://localhost:5237' },
     },
   },
 })

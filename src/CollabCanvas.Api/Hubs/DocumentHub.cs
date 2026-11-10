@@ -19,11 +19,15 @@ public sealed class DocumentHub(
     RoomManager rooms,
     IRoomTransport transport,
     IOpJournalFactory journals,
-    OpRateLimiter opLimit) : Hub
+    OpRateLimiter opLimit,
+    StackExchange.Redis.IConnectionMultiplexer redis) : Hub
 {
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
         var room = rooms.GetOrCreate(req.DocId);
+        // T-19: index the doc for the /docs listing. Fire-and-forget —
+        // a Redis outage degrades discovery, never the join itself.
+        _ = redis.GetDatabase().SetAddAsync("docs", req.DocId);
         await Groups.AddToGroupAsync(Context.ConnectionId, req.DocId);
         rooms.TrackConnection(Context.ConnectionId, req.DocId, req.ClientId);
 

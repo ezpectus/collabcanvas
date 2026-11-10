@@ -61,6 +61,10 @@ export default function App() {
   const [lastSeq, setLastSeq] = useState(0)
   const [tool, setTool] = useState<Tool>('select')
   const [error, setError] = useState<string | null>(null)
+  // T-19: current doc from ?doc=; known docs for the picker.
+  const [docId, setDocId] = useState(
+    () => new URLSearchParams(location.search).get('doc') ?? 'demo')
+  const [docList, setDocList] = useState<string[]>([])
   // T-15: inline text editing — {id, orig} while the overlay is open.
   const [editing, setEditing] = useState<{ id: string; orig: string } | null>(null)
   const editingRef = useRef<{ id: string; orig: string } | null>(null)
@@ -133,6 +137,11 @@ export default function App() {
     (editorRef.current ??= new Editor(session(), indexRef.current, markDirty)),
   [markDirty])
 
+  const refreshDocs = useCallback(async () => {
+    try { setDocList(await (await fetch('/docs')).json()) }
+    catch { /* discovery degrades, doc still works */ }
+  }, [])
+
   const connect = useCallback(async () => {
     setState('connecting')
     setError(null)
@@ -140,14 +149,25 @@ export default function App() {
       const s = session()
       s.onChange = markDirty
       s.onPresence = markDirty
-      await s.join('demo', clientId.current)
+      await s.join(docId, clientId.current)
       setState('joined')
       markDirty()
+      void refreshDocs()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setState('error')
     }
-  }, [markDirty])
+  }, [markDirty, docId, refreshDocs])
+
+  /** T-19: hop to another doc on the same connection; ?doc= follows. */
+  const switchDoc = useCallback(async (next: string) => {
+    const id = next.trim()
+    if (!id || id === docId) return
+    setDocId(id)
+    history.replaceState(null, '', `?doc=${encodeURIComponent(id)}`)
+    await session().switchDoc(id)
+    void refreshDocs()
+  }, [docId, refreshDocs])
 
   useEffect(() => () => { void sessionRef.current?.stop() }, [])
 
@@ -205,8 +225,22 @@ export default function App() {
         <h1>CollabCanvas</h1>
         <span className={`pill ${state}`}>{state}</span>
         <button onClick={() => void connect()} disabled={state === 'connecting'}>
-          Join demo
+          Join {docId}
         </button>
+        {state === 'joined' && (
+          <>
+            <select className="docpick" value={docId}
+              onChange={(e) => void switchDoc(e.target.value)}>
+              <option value={docId}>{docId}</option>
+              {docList.filter((d) => d !== docId).map((d) =>
+                <option key={d} value={d}>{d}</option>)}
+            </select>
+            <button className="tool" onClick={() =>
+              void navigator.clipboard.writeText(
+                `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}`)
+            }>share</button>
+          </>
+        )}
         {TOOLS.map((t) => (
           <button key={t}
             className={t === tool ? 'tool active' : 'tool'}

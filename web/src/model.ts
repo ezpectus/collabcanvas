@@ -137,6 +137,14 @@ export class DocModel {
       a.z === b.z ? (a.id < b.id ? -1 : 1) : a.z < b.z ? -1 : 1)
   }
 
+  /** Full reset — doc switch drops every register/tombstone (T-19). */
+  reset(): void {
+    this.regs.clear()
+    this.life.clear()
+    this.lastSeq = 0
+    this.version++
+  }
+
   objectCount(): number {
     let n = 0
     for (const l of this.life.values()) if (l.cseq > l.dseq) n++

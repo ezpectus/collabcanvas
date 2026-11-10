@@ -20,6 +20,8 @@ pre.err { color: #e57c7c; }
 
 button.tool { background: #2a2a38; padding: 6px 12px; font-size: 13px; }
 button.tool.active { background: #3d5af1; }
+.docpick { background: #2a2a38; color: #c8ccd8; border: 0; border-radius: 6px;
+           padding: 6px 8px; font-size: 13px; }
 
 .stats { font-size: 12px; color: #9aa3c0; font-variant-numeric: tabular-nums; }
 

@@ -161,5 +161,17 @@ export class Session {
     })
   }
 
+  /** T-19: switch to another document on the same connection —
+   *  local state fully resets (model + pending + cursors), then a
+   *  fresh join at lastSeq=0 pulls the target doc's tail/snapshot. */
+  async switchDoc(docId: string): Promise<void> {
+    this.pending.clear()
+    this.cursors.clear()
+    this.model.reset()
+    this.docId = docId
+    if (this.conn) await this.rejoin(0)
+    this.onChange?.()
+  }
+
   async stop(): Promise<void> { await this.conn?.stop() }
 }

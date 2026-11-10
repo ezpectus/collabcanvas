@@ -47,6 +47,18 @@ app.MapGet("/health", async (IConnectionMultiplexer redis, CancellationToken ct)
         statusCode: redisOk ? 200 : 503);
 });
 
+// T-19: known documents. Set maintained by JoinDocument; empty when
+// Redis is down (fail-open — discovery degrades, docs don't vanish).
+app.MapGet("/docs", async (IConnectionMultiplexer redis) =>
+{
+    try
+    {
+        var ids = await redis.GetDatabase().SetMembersAsync("docs");
+        return Results.Ok(ids.Select(v => v.ToString()).Take(200).ToArray());
+    }
+    catch (RedisException) { return Results.Ok(Array.Empty<string>()); }
+});
+
 app.MapHub<DocumentHub>("/hubs/document");
 
 app.Run();
