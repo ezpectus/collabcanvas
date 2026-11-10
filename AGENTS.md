@@ -188,7 +188,30 @@ reconnect, presence, журнал. Код, в котором он этого н�
 - Второй WSL-диск: `%LOCALAPPDATA%\wsl\*\ext4.vhdx` ~2.3 ГБ.
 - Репо лёгкий: `node_modules`/`bin`/`obj` регенерируются —
   `npm ci`, `dotnet build`.
-- Свободно на 2026-11-10: **C: ~82.4 ГБ** (было 87 на 31.10 —
-  минус ~5 ГБ за 10 дней, юзер просил следить), F: ~539.7 ГБ.
+- Свободно на 2026-11-10: **C: ~80 ГБ** (было 87 на 31.10 —
+  минус ~7 ГБ за 10 дней, юзер просил следить), F: ~540 ГБ.
   `docker_data.vhdx` ~15.2 ГБ. Главный жнец места — Docker +
   WSL-диски; логировать свободное место каждую сессию в CHANGELOG.
+
+### Карта диска C — замер 2026-11-10 (юзер сообщил дрейф ~140→80 ГБ)
+
+История по юзеру: ~140 ГБ → ~120 → ~100-110 → **80**. Это ~60 ГБ
+накаплившегося дрейфа; разовая утечка не найдена — это сумма
+роста VHDX, кэшей, Temp и WinSxS (растёт с каждым апдейтом).
+
+| ГБ | Путь | Что | Отдаёт место |
+|---|---|---|---|
+| 15.2 | `%LOCALAPPDATA%\Docker\wsl\docker_data.vhdx` | Docker-диск | compact от АДМИНА (внутри уже свободно ~4 ГБ кэша); `wsl --shutdown` + diskpart/`Optimize-VHD` |
+| 18.0 | `C:\Windows\WinSxS` | хранилище компонентов | `Dism /Online /Cleanup-Image /StartComponentCleanup` от АДМИНА, ~2-5 ГБ |
+| 9.2 | `%LOCALAPPDATA%\Temp` | temp-мусор | удаление старых файлов, без админа |
+| 3.7 | `%LOCALAPPDATA%\npm-cache` | npm-кэш | `npm cache clean --force`, ноль потерь |
+| 2.3 | `%LOCALAPPDATA%\wsl\*\ext4.vhdx` | WSL-дистрибутив | тот же compact-механизм |
+| 0.95 | `C:\Windows\Installer` | MSI-кэш | НЕ ТРОГАТЬ — сломает uninstall/repair |
+| 0.7 | `~\.nuget\packages` | NuGet-кэш | `dotnet nuget locals all --clear` |
+| 0.6 | браузерные кэши, pip, CBS-логи, корзина | мелочь | стандартная очистка |
+| 0 | hiberfil/pagefile/Windows.old/Update-кэш | — | гибернация выкл, своп не на C, Windows.old пуст |
+| ? | VSS-точки восстановления | restore points | `vssadmin` без админа не видит — проверить `vssadmin list shadowstorage` от админа |
+
+Потенциал возврата: ~13-14 ГБ без админа (Temp+npm+nuget),
+~8-9 ГБ с админом (VHDX-compact + DISM + VSS-лимит). Тома Docker
+(pgdata БД другого проекта) — не трогать ни при какой чистке.
