@@ -71,7 +71,8 @@ function Inspector({ editor, model }: {
   // points are an array: no honest scalar input, hidden entirely.
   const fields: [string, number][] = o.kind === 'line'
     ? [['x1', num(o.props, 'x1')], ['y1', num(o.props, 'y1')],
-       ['x2', num(o.props, 'x2')], ['y2', num(o.props, 'y2')]]
+       ['x2', num(o.props, 'x2')], ['y2', num(o.props, 'y2')],
+       ['lineWidth', num(o.props, 'lineWidth', 2)]]
     : o.props['x'] === undefined ? []
     : [['x', num(o.props, 'x')], ['y', num(o.props, 'y')],
        ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
