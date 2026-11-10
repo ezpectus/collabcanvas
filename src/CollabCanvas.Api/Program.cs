@@ -59,6 +59,20 @@ app.MapGet("/docs", async (IConnectionMultiplexer redis) =>
     catch (RedisException) { return Results.Ok(Array.Empty<string>()); }
 });
 
+// T-24: op history tail — what the journal still remembers. This is
+// an AUDIT view, not time travel: MAXLEN means pre-trim history is
+// gone and restore-from-seq is deliberately out of scope.
+app.MapGet("/ops", (CollabCanvas.Core.Journal.IOpJournalFactory journals,
+    string doc, int? n) =>
+{
+    if (string.IsNullOrWhiteSpace(doc) || doc.Length > 64)
+        return Results.BadRequest("bad doc");
+    var take = Math.Clamp(n ?? 100, 1, 500);
+    var ops = journals.ForDoc(doc).Tail(take).Select(o =>
+        new { o.Seq, Type = o.Type.ToString(), o.ClientId, o.ClientSeq });
+    return Results.Ok(ops);
+});
+
 app.MapHub<DocumentHub>("/hubs/document");
 
 app.Run();

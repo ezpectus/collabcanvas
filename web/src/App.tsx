@@ -142,6 +142,19 @@ export default function App() {
     catch { /* discovery degrades, doc still works */ }
   }, [])
 
+  // T-24: audit view of the journal tail — who did what, not a time
+  // machine (hist deeper than MAXLEN doesn't exist).
+  const [hist, setHistory] = useState<
+    { seq: number; type: string; clientId: string }[] | null>(null)
+  const showHistory = useCallback(async () => {
+    if (hist !== null) { setHistory(null); return }
+    try {
+      const ops = await (await fetch(
+        `/ops?doc=${encodeURIComponent(docId)}&n=50`)).json()
+      setHistory(ops)
+    } catch { setHistory([]) }
+  }, [hist, docId])
+
   const connect = useCallback(async () => {
     setState('connecting')
     setError(null)
@@ -268,6 +281,8 @@ export default function App() {
           a.download = `${docId}.png`
           a.click()
         }}>PNG</button>
+        <button className={hist !== null ? 'tool active' : 'tool'}
+          onClick={() => void showHistory()}>history</button>
         <button onClick={() => stress(10_000)}>Stress 10k</button>
         <button onClick={() => stress(0)}>Clear</button>
         {stats && (
@@ -331,6 +346,19 @@ export default function App() {
         {editing && <TextEditor id={editing.id} orig={editing.orig}
           session={session()} view={rendererRef.current!.view}
           onClose={closeEdit} />}
+        {hist !== null && (
+          <aside className="history-panel">
+            <b>Recent ops · doc {docId}</b>
+            {hist.length === 0 && <p>no ops in journal tail</p>}
+            {[...hist].reverse().map((o) => (
+              <div key={o.seq} className="hist-row">
+                <span className="hist-seq">#{o.seq}</span>
+                <span className="hist-type">{o.type}</span>
+                <span className="hist-who">{o.clientId}</span>
+              </div>
+            ))}
+          </aside>
+        )}
       </div>
     </div>
   )

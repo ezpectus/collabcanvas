@@ -45,6 +45,13 @@ public sealed class RedisOpJournal(IConnectionMultiplexer mux, string docId) : I
     public IReadOnlyList<OpBroadcast> ReadSince(long seq) =>
         ReadAll().Where(o => o.Seq > seq).ToArray();
 
+    public IReadOnlyList<OpBroadcast> Tail(int n) => Try(() =>
+        Db.StreamRange(OpsKey, "-", "+", count: n,
+                messageOrder: Order.Descending)
+            .Select(e => JsonSerializer.Deserialize<OpBroadcast>(
+                e["op"].ToString())!)
+            .Reverse().ToArray()) ?? [];
+
     public RoomSnapshot? LoadSnapshot() => Try(() =>
     {
         var v = Db.StringGet(SnapKey);

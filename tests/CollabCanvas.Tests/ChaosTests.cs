@@ -31,6 +31,7 @@ public class ChaosTests
             if (_appended++ < survives) _inner.Append(op); // else: lost to the crash
         }
         public IReadOnlyList<OpBroadcast> ReadSince(long seq) => _inner.ReadSince(seq);
+        public IReadOnlyList<OpBroadcast> Tail(int n) => _inner.Tail(n);
         public RoomSnapshot? LoadSnapshot() => _inner.LoadSnapshot();
         public void WriteSnapshot(long seq, string json) => _inner.WriteSnapshot(seq, json);
     }

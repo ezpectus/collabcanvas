@@ -19,6 +19,9 @@ public interface IOpJournal
     long FirstSeq { get; }
     void Append(OpBroadcast op);
     IReadOnlyList<OpBroadcast> ReadSince(long seq);
+    /// <summary>T-24: newest n ops, ascending. For the history view —
+    ///   bounded read that doesn't scan the whole stream.</summary>
+    IReadOnlyList<OpBroadcast> Tail(int n);
     RoomSnapshot? LoadSnapshot();
     void WriteSnapshot(long seq, string json);
 }
@@ -55,6 +58,9 @@ public sealed class InMemoryOpJournal(int? maxLen = null) : IOpJournal
 
     public IReadOnlyList<OpBroadcast> ReadSince(long seq) =>
         _ops.Where(o => o.Seq > seq).ToArray();
+
+    public IReadOnlyList<OpBroadcast> Tail(int n) =>
+        _ops.TakeLast(n).ToArray();
 
     public RoomSnapshot? LoadSnapshot() => _snap;
 

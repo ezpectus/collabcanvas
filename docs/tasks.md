@@ -562,11 +562,12 @@ Create — path перестал быть самым жирным op'ом. path.
 (step*2 пока <8px). Край: resize-delta не снаппит абсолют — якорь
 на сетке, тянуть можешь куда угодно.
 
-## T-24 · Version history из журнала · `todo` · M
-GET /ops?doc= → последние N ops (журнал уже помнит всё);
-клиент — панель истории, клик = просмотр состояния (replay локально
-до seq). Restore = compensating Patch (undo-механика уже есть).
-Край: journal MAXLEN — история глубже ~10k ops нет (снапшот-база).
+## T-24 · Version history (audit view) · `review` · M
+Đã xây phần audit: `Tail(n)` trên IOpJournal (Redis XREVRANGE
+bounded — không scan 10k), GET /ops?doc=&n=, panel "history"
+ở client (seq/type/client). Restore-from-seq vẫn defer: MAXLEN
+xóa tiền-sử, rewind thật không thể — panel là audit không phải
+time machine, chữ đó đã ghi trong code comment.
 
 ## T-25 · Minimap · `todo` · S
 Второй canvas, bounds всего документа, viewport-rect.
