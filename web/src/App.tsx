@@ -90,6 +90,16 @@ function Inspector({ editor, model }: {
   return (
     <aside className="history-panel inspector-panel">
       <b>{o.kind} · {id.slice(0, 8)}</b>
+      {o.kind === 'text' && (
+        <div className="hist-row">
+          <span className="hist-seq">align</span>
+          <select className="insp-input" value={str(o.props, 'align') || 'left'}
+            onChange={(e) =>
+              editor.applyProps(id, { align: e.target.value })}>
+            <option>left</option><option>center</option><option>right</option>
+          </select>
+        </div>
+      )}
       {fields.map(([k, v]) => (
         <div key={k} className="hist-row">
           <span className="hist-seq">{k}</span>

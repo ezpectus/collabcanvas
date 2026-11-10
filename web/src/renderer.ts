@@ -353,12 +353,24 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       ctx.lineWidth = num(p, 'lineWidth', 2)
       ctx.stroke()
       break
-    case 'text':
+    case 'text': {
       if (fill === 'none') break
       ctx.fillStyle = fill
       ctx.font = `${num(p, 'fontSize', 16)}px sans-serif`
-      ctx.fillText(str(p, 'text', '…'), num(p, 'x'), num(p, 'y'))
+      // align: anchor inside the w-box (Figma-style). Canvas default
+      // is 'left' — center/right move the fillText anchor.
+      const al = str(p, 'align')
+      if (al === 'center' || al === 'right') {
+        ctx.textAlign = al
+        ctx.fillText(str(p, 'text', '…'),
+          num(p, 'x') + (al === 'center' ? num(p, 'w', 10) / 2
+                                         : num(p, 'w', 10)),
+          num(p, 'y'))
+        ctx.textAlign = 'left'
+      } else
+        ctx.fillText(str(p, 'text', '…'), num(p, 'x'), num(p, 'y'))
       break
+    }
     case 'path': {
       const pts = p['points'] as { x: number; y: number }[] | undefined
       if (!pts?.length) break
