@@ -280,3 +280,7 @@ Engine). Закрытые таски — `docs/done-log.md`.
   Results.Forbid() без auth-пайплайна → StatusCode(403);
   MembershipStore.TryParse → ParseRole (конвенция биндинга
   minimal-API валила стартап)
+- T-26 stage 3: share-линки guest viewer/editor, grant per-op
+  revalidation, revoke на живом сокете; бот +9 (97eca9b)
+- T-26 stage 4: share-UI + viewer-mode; фикс фантома denied-ack
+  (optimistic apply без отката → rejoin-ресинк) (коммит выше)
