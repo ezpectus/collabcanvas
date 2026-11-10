@@ -465,6 +465,23 @@ export class Editor {
       return
     }
     if (key === 'Escape') {
+      // Esc mid-gesture cancels it (Figma convention): restore drag-
+      // start props on the wire for move/resize/rotate/point; undo an
+      // already-submitted create with Delete; drop a marquee/local
+      // path outright. No undo entry — a cancel is not a mutation.
+      const d = this.drag
+      if (d) {
+        this.drag = null; this.guides = []; this.marquee = null
+        for (const [oid, orig] of d.orig) {
+          if (d.mode === 'create') {
+            if (d.localCreate) this.session.applyLocal('Delete', { id: oid })
+            else this.session.submit('Delete', { id: oid })
+          } else {
+            this.session.submit('Patch', { id: oid, props: { ...orig } })
+          }
+        }
+        this.redraw(); return
+      }
       this.selected.clear(); this.redraw(); return
     }
     if (ctrl && (key === 'a' || key === 'A')) {
