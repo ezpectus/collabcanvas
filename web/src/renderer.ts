@@ -318,13 +318,25 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
     ctx.translate(-cx, -cy)
   }
   switch (o.kind) {
-    case 'rect':
-      if (fill !== 'none') {
-        ctx.fillStyle = fill
-        ctx.fillRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10))
+    case 'rect': {
+      const rx = num(p, 'x'), ry = num(p, 'y'),
+        rw = num(p, 'w', 10), rh = num(p, 'h', 10)
+      const rad = Math.max(0, Math.min(num(p, 'radius'),
+        Math.min(rw, rh) / 2))
+      if (rad) {
+        ctx.beginPath()
+        ctx.roundRect(rx, ry, rw, rh, rad)
+        if (fill !== 'none') { ctx.fillStyle = fill; ctx.fill() }
+        if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.stroke() }
+      } else {
+        if (fill !== 'none') {
+          ctx.fillStyle = fill
+          ctx.fillRect(rx, ry, rw, rh)
+        }
+        if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.strokeRect(rx, ry, rw, rh) }
       }
-      if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.strokeRect(num(p, 'x'), num(p, 'y'), num(p, 'w', 10), num(p, 'h', 10)) }
       break
+    }
     case 'ellipse': {
       const x = num(p, 'x'), y = num(p, 'y'), w = num(p, 'w', 10), h = num(p, 'h', 10)
       ctx.beginPath()

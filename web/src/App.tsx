@@ -84,6 +84,8 @@ function Inspector({ editor, model }: {
   if (!fields.length) return null
   if (o.kind === 'text')
     fields.push(['fontSize', num(o.props, 'fontSize', 16)])
+  if (o.kind === 'rect')
+    fields.push(['radius', num(o.props, 'radius')])
   fields.push(['opacity', num(o.props, 'opacity', 1)]) // all kinds
   return (
     <aside className="history-panel inspector-panel">
