@@ -475,6 +475,22 @@ export class Editor {
     if (ctrl && (key === 'd' || key === 'D')) { this.duplicate(); return }
     if (key === ']') { this.stepReorder(1, ctrl); return }
     if (key === '[') { this.stepReorder(-1, ctrl); return }
+    // T-31: font size was hardcoded at create — +/- nudges it on
+    // selected text objects. Same Patch+undo pipeline as everything.
+    if (key === '=' || key === '-') {
+      const dpx = key === '=' ? 2 : -2
+      const inv: WireOp[] = [], fwd: WireOp[] = []
+      for (const oid of this.selected) {
+        const o = this.find(oid)
+        if (!o || o.kind !== 'text') continue
+        const size = Math.max(6, num(o.props, 'fontSize', 16) + dpx)
+        inv.push({ type: 'Patch', payload: { id: oid, props: { fontSize: o.props['fontSize'] ?? null } } })
+        fwd.push({ type: 'Patch', payload: { id: oid, props: { fontSize: size } } })
+        this.session.submit('Patch', { id: oid, props: { fontSize: size } })
+      }
+      if (fwd.length) this.recordUndo(inv, fwd)
+      return
+    }
     // T-27: arrow nudge — 1wu, Shift = 10wu. One Patch per object,
     // one undo entry covering the whole selection.
     const arrow: Record<string, [number, number]> = {

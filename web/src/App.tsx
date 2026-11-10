@@ -391,7 +391,7 @@ export default function App() {
               ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
-              ['shift+BR drag', 'rotate'], ['arrows', 'nudge · shift=10'],
+              ['shift+BR drag', 'rotate'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'],
               ['ctrl+d', 'duplicate'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
