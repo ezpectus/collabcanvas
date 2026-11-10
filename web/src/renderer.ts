@@ -262,8 +262,10 @@ export class Renderer {
       if (ob) ctx.fillRect(px((ob.x0 + ob.x1) / 2) - d / 2,
         py((ob.y0 + ob.y1) / 2) - d / 2, d, d)
     }
-    // Viewport rect in world→map coords.
+    // Viewport rect in world→map coords — lineWidth is global state;
+    // without a reset it would inherit the last object's stroke width.
     ctx.strokeStyle = '#e8eaf2'
+    ctx.lineWidth = 1
     ctx.strokeRect(px(view.x0), py(view.y0),
       (view.x1 - view.x0) * s * dpr, (view.y1 - view.y0) * s * dpr)
   }
@@ -327,13 +329,21 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
         ctx.beginPath()
         ctx.roundRect(rx, ry, rw, rh, rad)
         if (fill !== 'none') { ctx.fillStyle = fill; ctx.fill() }
-        if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.stroke() }
+        if (stroke && stroke !== 'none') {
+          ctx.strokeStyle = stroke
+          ctx.lineWidth = num(p, 'lineWidth', 1)
+          ctx.stroke()
+        }
       } else {
         if (fill !== 'none') {
           ctx.fillStyle = fill
           ctx.fillRect(rx, ry, rw, rh)
         }
-        if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.strokeRect(rx, ry, rw, rh) }
+        if (stroke && stroke !== 'none') {
+          ctx.strokeStyle = stroke
+          ctx.lineWidth = num(p, 'lineWidth', 1)
+          ctx.strokeRect(rx, ry, rw, rh)
+        }
       }
       break
     }
@@ -342,7 +352,11 @@ function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject): void {
       ctx.beginPath()
       ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
       if (fill !== 'none') { ctx.fillStyle = fill; ctx.fill() }
-      if (stroke && stroke !== 'none') { ctx.strokeStyle = stroke; ctx.stroke() }
+      if (stroke && stroke !== 'none') {
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = num(p, 'lineWidth', 1)
+        ctx.stroke()
+      }
       break
     }
     case 'line':
