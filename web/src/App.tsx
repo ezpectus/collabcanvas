@@ -208,8 +208,12 @@ export default function App() {
         v: 'select', r: 'rect', e: 'ellipse', l: 'line', t: 'text', p: 'path',
       }
       if (map[e.key]) { editor().tool = map[e.key]!; setTool(map[e.key]!) }
-      if (e.key === '1') { // zoom-to-fit — whole document in view
-        const objs = session().model.objects()
+      if (e.key === '1' || e.key === '!') {
+        // zoom-to-fit: Shift+1 ('!') = selection, else whole doc
+        const sel = editor().selected
+        const objs = e.shiftKey && sel.size
+          ? session().model.objects().filter((o) => sel.has(o.id))
+          : session().model.objects()
         if (objs.length) {
           let b = boundsOf(objs[0]!)!
           for (const o of objs) {
@@ -402,7 +406,7 @@ export default function App() {
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
               ['ctrl+a / esc', 'all / deselect'], ['g', 'grid+snap'],
-              ['m', 'minimap'], ['1', 'zoom fit'], ['space+drag', 'pan'],
+              ['m', 'minimap'], ['1 / shift+1', 'zoom fit / selection'], ['space+drag', 'pan'],
               ['wheel', 'zoom'], ['?', 'this panel'],
             ] as const).map(([k, d]) => (
               <div key={k} className="hist-row">
