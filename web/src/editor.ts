@@ -848,6 +848,18 @@ export class Editor {
     this.redraw()
   }
 
+  /** T-41: place `id` at an explicit z — used by layers drag-drop:
+   *  the row hit computes the fractional z between its neighbors. */
+  reorderTo(id: string, z: string): void {
+    const o = this.find(id)
+    if (!o || o.z === z || o.props['locked']) return
+    this.session.submit('Reorder', { id, z })
+    this.recordUndo(
+      [{ type: 'Reorder', payload: { id, z: o.z } }],
+      [{ type: 'Reorder', payload: { id, z } }])
+    this.redraw()
+  }
+
   /** ] = bring to front, [ = send to back — one reorder op each. */
   private reorder(dir: 1 | -1): void {
     if (this.selected.size === 0) return

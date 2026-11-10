@@ -5,6 +5,7 @@ import { SceneIndex } from './quadtree'
 import { Editor, type Tool } from './editor'
 import { boundsOf, num, str } from './geometry'
 import type { DocModel } from './model'
+import { FractionalIndex } from './fractionalIndex'
 
 type ConnState = 'idle' | 'connecting' | 'joined' | 'error'
 
@@ -525,11 +526,28 @@ export default function App() {
             {/* 10k stress objects would freeze the tab — same culling
                 philosophy as the renderer: cap the list, show the rest
                 as a count. */}
-            {[...session().model.objects()].reverse().slice(0, 200).map((o) => (
+            {[...session().model.objects()].reverse().slice(0, 200)
+              .map((o, i, rows) => (
               <div key={o.id}
                 className={editor().selected.has(o.id)
                   ? 'hist-row sel' : 'hist-row'}
                 onClick={() => pickFromLayers(o.id)}
+                draggable
+                // T-41: drag-drop reorders — the dropped object takes
+                // the fractional z just under the row it lands on.
+                onDragStart={(e) =>
+                  e.dataTransfer.setData('text/plain', o.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const dragId = e.dataTransfer.getData('text/plain')
+                  if (!dragId || dragId === o.id) return
+                  const below = rows[i + 1]
+                  const z = below
+                    ? FractionalIndex.between(below.z, o.z)
+                    : FractionalIndex.before(o.z)
+                  editor().reorderTo(dragId, z)
+                }}
                 style={o.props['locked']
                   ? { opacity: .55 } : undefined}>
                 <span className="hist-type">{o.kind}</span>
