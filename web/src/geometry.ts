@@ -139,5 +139,31 @@ export function simplifyPoints(
 export const intersects = (a: BBox, b: BBox): boolean =>
   !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1)
 
+/** T-29: precise hit for open shapes. AABB says "inside" for a
+ *  diagonal line's whole bounding box — clicking its empty corner
+ *  steals the click from objects below. Point-to-segment distance
+ *  is the real test: within `tol` of ANY segment = hit. */
+export function hitsStroke(o: CanvasObject, x: number, y: number,
+  tol: number): boolean {
+  const p = o.props
+  const segs: [number, number, number, number][] = []
+  if (o.kind === 'line') {
+    segs.push([num(p, 'x1'), num(p, 'y1'), num(p, 'x2'), num(p, 'y2')])
+  } else if (o.kind === 'path') {
+    const pts = (p['points'] as { x: number; y: number }[] | undefined) ?? []
+    for (let i = 1; i < pts.length; i++)
+      segs.push([pts[i - 1]!.x, pts[i - 1]!.y, pts[i]!.x, pts[i]!.y])
+  } else return false
+  const lw = num(p, 'lineWidth', 2) / 2
+  const t2 = (tol + lw) * (tol + lw)
+  return segs.some(([ax, ay, bx, by]) => {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy
+    const u = l2 === 0 ? 0 : Math.max(0, Math.min(1,
+      ((x - ax) * dx + (y - ay) * dy) / l2))
+    const px = ax + u * dx - x, py = ay + u * dy - y
+    return px * px + py * py <= t2
+  })
+}
+
 export const contains = (b: BBox, x: number, y: number): boolean =>
   x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1

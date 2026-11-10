@@ -9,7 +9,7 @@
 // and rebuild-on-change is provably correct.
 
 import type { CanvasObject, DocModel } from './model'
-import { boundsOf, contains, intersects, type BBox } from './geometry'
+import { boundsOf, contains, hitsStroke, intersects, type BBox } from './geometry'
 
 export class QuadTree {
   private readonly items: { id: string; b: BBox }[] = []
@@ -109,7 +109,13 @@ export class SceneIndex {
     const rect: BBox = { x0: x - pad, y0: y - pad, x1: x + pad, y1: y + pad }
     const hit = this.tree!.query(rect)
       .map((id) => this.byId.get(id)!)
-      .filter((o) => { const b = boundsOf(o); return b && contains(b, x, y) })
+      .filter((o) => {
+        // T-29: open shapes hit by stroke proximity, not bounding box.
+        if (o.kind === 'line' || o.kind === 'path')
+          return hitsStroke(o, x, y, pad)
+        const b = boundsOf(o)
+        return b && contains(b, x, y)
+      })
       .sort((a, b) => (a.z === b.z ? (a.id < b.id ? 1 : -1) : a.z < b.z ? 1 : -1))
     return hit[0] ?? null
   }
