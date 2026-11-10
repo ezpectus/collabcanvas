@@ -311,6 +311,9 @@ app.MapGet("/blobs/{id}", async (
     if (cr is null) return Results.StatusCode(403);
     var bytes = await redis.GetDatabase().StringGetAsync($"blob:{id}");
     var type = await redis.GetDatabase().HashGetAsync($"blob:{id}:meta", "type");
+    // Stored content-type is uploader-claimed; nosniff keeps the
+    // browser from re-guessing an executable type for a hostile blob.
+    req.HttpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
     return bytes.IsNullOrEmpty ? Results.NotFound()
         : Results.File((byte[])bytes!, type.ToString() ?? "application/octet-stream");
 });

@@ -416,6 +416,29 @@ ok('blobs: viewer member cannot upload',
   (await authed(`/docs/${OWN}/members`, token, { method: 'POST',
     body: JSON.stringify({ login: u2, role: 'viewer' }) }),
    await blobPost(png, reg2.token)).status === 403)
+ok('blobs: nosniff header set', blobId &&
+  (await authed(`/blobs/${blobId}`, reg3.token))
+    .headers.get('x-content-type-options') === 'nosniff')
+
+// --- logout on a LIVE socket: the session dies, the socket's
+// member rights must die with it — per-op token re-resolution.
+const u4 = `lo_${Date.now().toString(36)}`
+const reg4 = await (await authPost('register',
+  { login: u4, password: 'secretpw' })).json()
+const OWN4 = (await (await authed('/docs', reg4.token,
+  { method: 'POST' })).json()).id
+const L = client(u4, reg4.token)
+await L.start()
+await L.join(0, OWN4)
+const loAck1 = await L.submit('Create',
+  { id: 'lo1', kind: 'rect', z: 'a1', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN4)
+ok('logout: owner op accepted pre-logout', loAck1.accepted === true)
+await authed('/auth/logout', reg4.token, { method: 'POST' })
+const loAck2 = await L.submit('Create',
+  { id: 'lo2', kind: 'rect', z: 'a2', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN4)
+ok('logout: live socket loses rights on next op',
+  loAck2.accepted === false && loAck2.reason === 'forbidden', loAck2.reason)
+await L.conn.stop()
 
 // --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
 const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()

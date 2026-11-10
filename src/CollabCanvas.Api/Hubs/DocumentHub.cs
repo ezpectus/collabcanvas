@@ -43,6 +43,7 @@ public sealed class DocumentHub(
         {
             Context.Items["uid"] = who.id;
             Context.Items["login"] = who.login;
+            Context.Items["token"] = token;
         }
         await base.OnConnectedAsync();
     }
@@ -54,8 +55,13 @@ public sealed class DocumentHub(
     private async Task<CollabCanvas.Api.Auth.RoomRole?> EffectiveRole(
         string docId, string? grant)
     {
-        if (Context.Items["login"] is string login &&
-            await members.RoleOfAsync(docId, login) is { } m)
+        // Re-resolve the bearer token per call — a logged-out or
+        // expired session must not keep member rights on a live
+        // socket (same no-cache policy as membership revocation;
+        // one extra Redis read per op is the honest price).
+        if (Context.Items["token"] is string tok &&
+            await users.ResolveAsync(tok) is { } who &&
+            await members.RoleOfAsync(docId, who.login) is { } m)
             return m;
         if (grant is not null &&
             await members.LinkRoleAsync(docId, grant) is { } l)
