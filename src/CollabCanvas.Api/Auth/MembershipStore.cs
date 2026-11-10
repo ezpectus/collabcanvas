@@ -70,6 +70,37 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
         return s.Select(v => v.ToString()).ToArray();
     }
 
+    // ---- T-26 stage 3: link grants -----------------------------------
+    // doc:{id}:links  hash token → "viewer|editor". A link is a bearer
+    // capability: owner/admin are NEVER grantable by link (design §links
+    // — a leaked owner-link = handing the doc away).
+    private static string LKey(string docId) => $"doc:{docId}:links";
+
+    public async Task<string> NewLinkAsync(string docId, RoomRole role)
+    {
+        var token = Convert.ToBase64String(
+            System.Security.Cryptography.RandomNumberGenerator.GetBytes(18))
+            .Replace('+', '-').Replace('/', '_'); // 24-char url-safe
+        await Db.HashSetAsync(LKey(docId), token, Name(role));
+        return token;
+    }
+
+    public async Task<RoomRole?> LinkRoleAsync(string docId, string token)
+    {
+        var v = await Db.HashGetAsync(LKey(docId), token);
+        return v.IsNullOrEmpty ? null : Parse(v.ToString());
+    }
+
+    public Task RemoveLinkAsync(string docId, string token) =>
+        Db.HashDeleteAsync(LKey(docId), token);
+
+    public async Task<Dictionary<string, RoomRole>> LinksAsync(string docId)
+    {
+        var h = await Db.HashGetAllAsync(LKey(docId));
+        return h.ToDictionary(
+            e => e.Name.ToString(), e => Parse(e.Value.ToString()));
+    }
+
     /// <summary>All owned doc ids — /docs guest filtering subtracts
     /// these from the discovery set.</summary>
     public async Task<HashSet<string>> OwnedDocIdsAsync()

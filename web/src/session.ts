@@ -39,11 +39,15 @@ export class Session {
   /** T-26: server-resolved doc role — set on every (re)join. UI may
       hide tools on 'viewer'; enforcement is server-side, always. */
   role: string | null = null
+  /** Share-link grant (T-26 stage 3) — re-sent on every (re)join and
+      re-checked server-side on every op. */
+  grant: string | null = null
 
   async join(docId: string, clientId: string, url = '/hubs/document',
-    token?: string | null): Promise<void> {
+    token?: string | null, grant?: string | null): Promise<void> {
     this.docId = docId
     this.clientId = clientId
+    this.grant = grant ?? null
     const conn = new signalR.HubConnectionBuilder()
       .withUrl(url, token ? { accessTokenFactory: () => token } : {})
       // Reconnect storm handling (T-10): exp backoff + full jitter —
@@ -86,6 +90,7 @@ export class Session {
       docId: this.docId,
       clientId: this.clientId,
       lastSeq,
+      grant: this.grant,
     })
     this.role = res.role ?? null
     if (res.snapshot)

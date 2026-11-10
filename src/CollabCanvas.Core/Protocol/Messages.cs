@@ -11,7 +11,12 @@ public enum OpType { Create, Patch, Delete, Reorder }
 
 /// <summary>client → server: enter a document. lastSeq = what the
 /// client already applied (0 = fresh join).</summary>
-public sealed record JoinDocumentRequest(string DocId, string ClientId, long LastSeq);
+public sealed record JoinDocumentRequest(string DocId, string ClientId,
+    long LastSeq,
+    /// T-26 stage 3: share-link bearer grant (viewer|editor). Checked
+    /// like membership — per join AND per op (revocation works on live
+    /// sockets, not just new joins).
+    string? Grant = null);
 
 /// <summary>server → client: join answer. snapshotSeq+snapshot replace
 /// state when present; ops = journal tail the client must replay.</summary>

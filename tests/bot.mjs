@@ -315,6 +315,70 @@ ok('authz: DELETE /docs allowed for owner',
 
 await G.conn.stop(); await N.conn.stop()
 
+// --- T-26 stage 3: share links (guest viewer/editor) -----------------------------------
+const mkLink = async (role) => (await (await authed(`/docs/${OWN}/links`,
+  token, { method: 'POST', body: JSON.stringify({ role }) })).json()).token
+
+// Bad grant → still denied.
+const GB = client('bot-gbad')
+await GB.start()
+GB.join = (lastSeq = 0, doc = OWN, grant = null) =>
+  GB.conn.invoke('JoinDocument', { docId: doc, clientId: 'bot-gbad',
+    lastSeq, grant })
+const badJoin = await GB.join(0, OWN, 'forged-token')
+  .catch(e => `denied:${e.message}`)
+ok('links: forged grant denied',
+  String(badJoin).includes('forbidden'), String(badJoin).slice(0, 70))
+await GB.conn.stop()
+
+// Viewer link → guest joins with role=viewer, ops denied.
+const vTok = await mkLink('viewer')
+const GV = client('bot-gview')
+await GV.start()
+GV.join = (lastSeq = 0, doc = OWN, grant = vTok) =>
+  GV.conn.invoke('JoinDocument', { docId: doc, clientId: 'bot-gview',
+    lastSeq, grant })
+const gvJoin = await GV.join()
+ok('links: viewer grant joins as guest', gvJoin.role === 'viewer', gvJoin.role)
+const gvAck = await GV.submit('Create',
+  { id: 'gv1', kind: 'rect', z: 'a4', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('links: viewer-grant op denied', gvAck.accepted === false &&
+  gvAck.reason === 'forbidden', gvAck.reason)
+
+// Editor link → guest joins with role=editor, ops accepted.
+const eTok = await mkLink('editor')
+const GE = client('bot-gedit')
+await GE.start()
+GE.join = (lastSeq = 0, doc = OWN, grant = eTok) =>
+  GE.conn.invoke('JoinDocument', { docId: doc, clientId: 'bot-gedit',
+    lastSeq, grant })
+const geJoin = await GE.join()
+ok('links: editor grant joins as guest', geJoin.role === 'editor', geJoin.role)
+const geAck = await GE.submit('Create',
+  { id: 'ge1', kind: 'rect', z: 'a5', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('links: editor-grant op accepted', geAck.accepted === true, geAck.reason)
+
+// Link is capped: admin/owner roles are refused at creation.
+ok('links: admin link refused', (await authed(`/docs/${OWN}/links`,
+  token, { method: 'POST', body: JSON.stringify({ role: 'admin' }) }))
+    .status === 400)
+ok('links: owner link refused', (await authed(`/docs/${OWN}/links`,
+  token, { method: 'POST', body: JSON.stringify({ role: 'owner' }) }))
+    .status === 400)
+ok('links: member can\'t mint links', (await authed(`/docs/${OWN}/links`,
+  reg2.token, { method: 'POST', body: JSON.stringify({ role: 'viewer' }) }))
+    .status === 403)
+
+// Revoke kills the LIVE socket: editor-grant guest's next op denied.
+ok('links: owner revokes editor link', (await authed(
+  `/docs/${OWN}/links/${eTok}`, token, { method: 'DELETE' }))
+    .status === 204)
+const revAck = await GE.submit('Create',
+  { id: 'rev1', kind: 'rect', z: 'a6', props: { x: 0, y: 0, w: 1, h: 1 } }, OWN)
+ok('links: revoked grant denied on live socket',
+  revAck.accepted === false && revAck.reason === 'forbidden', revAck.reason)
+await GV.conn.stop(); await GE.conn.stop()
+
 // --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
 const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()
 ok('ops endpoint: journal tail readable',

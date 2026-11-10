@@ -187,6 +187,9 @@ export default function App() {
   // T-19: current doc from ?doc=; known docs for the picker.
   const [docId, setDocId] = useState(
     () => new URLSearchParams(location.search).get('doc') ?? 'demo')
+  // T-26 stage 3: share-link grant travels with the join request.
+  const [grant] = useState(
+    () => new URLSearchParams(location.search).get('grant'))
   const [docList, setDocList] = useState<string[]>([])
   // T-15: inline text editing — {id, orig} while the overlay is open.
   const [editing, setEditing] = useState<{ id: string; orig: string } | null>(null)
@@ -331,7 +334,7 @@ export default function App() {
       const s = session()
       s.onChange = markDirty
       s.onPresence = markDirty
-      await s.join(docId, clientId.current, '/hubs/document', token)
+      await s.join(docId, clientId.current, '/hubs/document', token, grant)
       setRole(s.role)
       setState('joined')
       markDirty()
@@ -340,7 +343,7 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e))
       setState('error')
     }
-  }, [markDirty, docId, refreshDocs, token])
+  }, [markDirty, docId, refreshDocs, token, grant])
 
   /** T-19: hop to another doc on the same connection; ?doc= follows. */
   const switchDoc = useCallback(async (next: string) => {

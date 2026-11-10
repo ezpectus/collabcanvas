@@ -47,26 +47,33 @@ public sealed class DocumentHub(
         await base.OnConnectedAsync();
     }
 
-    /// T-26 stage 2: the connection's role — resolved uid's doc
-    /// membership, or "legacy editor" when the doc is unowned.
-    /// Guests get a role only on unowned docs (link grants = stage 3).
+    /// T-26 stage 2+3: the connection's role — member beats link
+    /// beats legacy: membership, then bearer grant, then "legacy
+    /// editor" when the doc is unowned. Guests on owned docs need a
+    /// valid grant; owner/admin are never grantable by link.
     private async Task<CollabCanvas.Api.Auth.RoomRole?> EffectiveRole(
-        string docId)
+        string docId, string? grant)
     {
-        if (!await members.IsOwnedAsync(docId))
-            return CollabCanvas.Api.Auth.RoomRole.Editor; // legacy open
-        return Context.Items["login"] is string login
-            ? await members.RoleOfAsync(docId, login)
-            : null;
+        if (Context.Items["login"] is string login &&
+            await members.RoleOfAsync(docId, login) is { } m)
+            return m;
+        if (grant is not null &&
+            await members.LinkRoleAsync(docId, grant) is { } l)
+            return l;
+        return await members.IsOwnedAsync(docId)
+            ? null : CollabCanvas.Api.Auth.RoomRole.Editor; // legacy open
     }
 
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
-        // Owned doc, no membership → denied. HubException surfaces as
-        // an invoke rejection on the client ("forbidden" reason text).
-        var role = await EffectiveRole(req.DocId);
+        // Owned doc, no membership/grant → denied. HubException
+        // surfaces as an invoke rejection on the client.
+        var role = await EffectiveRole(req.DocId, req.Grant);
         if (role is null)
             throw new HubException("forbidden: members only");
+        // Keep the grant for per-op revalidation — a revoked link
+        // stops this socket on the next SubmitOp, not just next join.
+        if (req.Grant is not null) Context.Items["grant"] = req.Grant;
 
         var room = rooms.GetOrCreate(req.DocId);
         // T-19: index the doc for the /docs listing. Fire-and-forget —
@@ -111,9 +118,10 @@ public sealed class DocumentHub(
         // never mint ops at network speed.
         if (!opLimit.Allow(Context.ConnectionId, DateTimeOffset.UtcNow))
             return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: "rate-limited");
-        // Per-op role check (T-26): also covers revocation — a removed
-        // member's live socket stops mutating on the very next op.
-        if (await EffectiveRole(op.DocId) is not { } r ||
+        // Per-op role check (T-26): covers revocation — a removed
+        // member or dead link stops mutating on the very next op.
+        if (await EffectiveRole(op.DocId,
+                Context.Items["grant"] as string) is not { } r ||
             r < CollabCanvas.Api.Auth.RoomRole.Editor)
             return new OpAck(op.ClientSeq, -1, Accepted: false, Reason: "forbidden");
         if (OpValidator.Validate(op) is { } why)
@@ -139,8 +147,9 @@ public sealed class DocumentHub(
     public async Task Presence(PresenceUpdate update)
     {
         // Guests can't paint cursors on owned docs they can't even
-        // join (viewers/members can — presence is read-only by nature).
-        if (await EffectiveRole(update.DocId) is null) return;
+        // join (viewers/members/link-holders can — read-only by nature).
+        if (await EffectiveRole(update.DocId,
+                Context.Items["grant"] as string) is null) return;
         var room = rooms.GetOrCreate(update.DocId);
         // Tracker stores every update (join snapshot stays fresh) and
         // rate-limits the fanout — a spammy client can't flood the room.

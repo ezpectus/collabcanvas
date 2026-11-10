@@ -133,6 +133,52 @@ app.MapPost("/docs/{id}/members", async (
     return Results.NoContent();
 });
 
+// T-26 stage 3: share links — bearer capability, viewer|editor ONLY.
+// A link is "anyone with this URL gets role X"; owner/admin can't be
+// granted by link (a leaked owner-link hands the whole doc away).
+app.MapGet("/docs/{id}/links", async (
+    string id,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    var caller = await CallerRole(members, users, req, id);
+    if (caller is null || caller < CollabCanvas.Api.Auth.RoomRole.Admin)
+        return Results.StatusCode(403);
+    var ls = await members.LinksAsync(id);
+    return Results.Ok(ls.ToDictionary(
+        kv => kv.Key, kv => CollabCanvas.Api.Auth.MembershipStore.Name(kv.Value)));
+});
+
+app.MapPost("/docs/{id}/links", async (
+    string id,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body, HttpRequest req) =>
+{
+    var caller = await CallerRole(members, users, req, id);
+    if (caller is null || caller < CollabCanvas.Api.Auth.RoomRole.Admin)
+        return Results.StatusCode(403);
+    var role = CollabCanvas.Api.Auth.MembershipStore.ParseRole(
+        body.TryGetProperty("role", out var r) ? r.GetString() : null);
+    if (role is not CollabCanvas.Api.Auth.RoomRole.Viewer and
+        not CollabCanvas.Api.Auth.RoomRole.Editor)
+        return Results.BadRequest("role viewer|editor only");
+    var token = await members.NewLinkAsync(id, role.Value);
+    return Results.Ok(new { token, role = CollabCanvas.Api.Auth.MembershipStore.Name(role.Value) });
+});
+
+app.MapDelete("/docs/{id}/links/{token}", async (
+    string id, string token,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    var caller = await CallerRole(members, users, req, id);
+    if (caller is null || caller < CollabCanvas.Api.Auth.RoomRole.Admin)
+        return Results.StatusCode(403);
+    await members.RemoveLinkAsync(id, token);
+    return Results.NoContent();
+});
+
 app.MapDelete("/docs/{id}/members/{login}", async (
     string id, string login,
     CollabCanvas.Api.Auth.MembershipStore members,
