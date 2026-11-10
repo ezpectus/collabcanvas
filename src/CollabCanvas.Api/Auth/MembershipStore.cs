@@ -76,19 +76,39 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
     // — a leaked owner-link = handing the doc away).
     private static string LKey(string docId) => $"doc:{docId}:links";
 
-    public async Task<string> NewLinkAsync(string docId, RoomRole role)
+    public async Task<string> NewLinkAsync(
+        string docId, RoomRole role, TimeSpan? ttl = null)
     {
         var token = Convert.ToBase64String(
             System.Security.Cryptography.RandomNumberGenerator.GetBytes(18))
             .Replace('+', '-').Replace('/', '_'); // 24-char url-safe
-        await Db.HashSetAsync(LKey(docId), token, Name(role));
+        // value = "role" or "role|expiryUnix" — old links without a
+        // pipe stay valid forever (back-compat).
+        var value = ttl is { } t
+            ? $"{Name(role)}|{DateTimeOffset.UtcNow.Add(t).ToUnixTimeSeconds()}"
+            : Name(role);
+        await Db.HashSetAsync(LKey(docId), token, value);
         return token;
+    }
+
+    /// Parses "role[|expiry]"; an expired grant deletes itself
+    /// lazily on first touch and resolves to nothing.
+    private async Task<RoomRole?> ReadLink(string docId, string token,
+        string raw)
+    {
+        var pipe = raw.IndexOf('|');
+        if (pipe < 0) return Parse(raw);
+        if (long.TryParse(raw[(pipe + 1)..], out var exp) &&
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds() < exp)
+            return Parse(raw[..pipe]);
+        await Db.HashDeleteAsync(LKey(docId), token);
+        return null;
     }
 
     public async Task<RoomRole?> LinkRoleAsync(string docId, string token)
     {
         var v = await Db.HashGetAsync(LKey(docId), token);
-        return v.IsNullOrEmpty ? null : Parse(v.ToString());
+        return v.IsNullOrEmpty ? null : await ReadLink(docId, token, v.ToString()!);
     }
 
     public Task RemoveLinkAsync(string docId, string token) =>
@@ -97,8 +117,12 @@ public sealed class MembershipStore(IConnectionMultiplexer redis)
     public async Task<Dictionary<string, RoomRole>> LinksAsync(string docId)
     {
         var h = await Db.HashGetAllAsync(LKey(docId));
-        return h.ToDictionary(
-            e => e.Name.ToString(), e => Parse(e.Value.ToString()));
+        var live = new Dictionary<string, RoomRole>();
+        foreach (var e in h)
+            if (await ReadLink(docId, e.Name.ToString(), e.Value.ToString()!)
+                is { } r)
+                live[e.Name.ToString()] = r;
+        return live;
     }
 
     /// <summary>All owned doc ids — /docs guest filtering subtracts

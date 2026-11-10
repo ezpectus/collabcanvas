@@ -392,6 +392,34 @@ ok('links: revoked grant denied on live socket',
   revAck.accepted === false && revAck.reason === 'forbidden', revAck.reason)
 await GV.conn.stop(); await GE.conn.stop()
 
+// Link expiry: minted-with-ttl works now; a grant whose expiry is
+// already past must not resolve (written straight into Redis —
+// the API clamps ttl >=1h so we can't wait for a real lapse).
+ok('links: ttlHours accepted on mint', (await authed(`/docs/${OWN}/links`,
+  token, { method: 'POST',
+    body: JSON.stringify({ role: 'viewer', ttlHours: 1 }) }))
+    .status === 200)
+ok('links: ttlHours out of range refused', (await authed(`/docs/${OWN}/links`,
+  token, { method: 'POST',
+    body: JSON.stringify({ role: 'viewer', ttlHours: 0 }) }))
+    .status === 400)
+try {
+  const { execSync } = await import('node:child_process')
+  execSync(`docker exec collabcanvas-redis-1 redis-cli hset ` +
+    `doc:${OWN}:links stale-grant "viewer|1"`)
+  const GS = client('bot-gstale')
+  await GS.start()
+  const staleJoin = await GS.conn.invoke('JoinDocument',
+    { docId: OWN, clientId: 'bot-gstale', lastSeq: 0, grant: 'stale-grant' })
+    .catch(e => `denied:${e.message}`)
+  ok('links: expired grant denied', String(staleJoin).includes('forbidden'),
+    String(staleJoin).slice(0, 60))
+  await GS.conn.stop()
+} catch (e) {
+  ok('links: expired grant denied', false,
+    `redis seed failed: ${String(e).slice(0, 50)}`)
+}
+
 // --- T-36: image blobs ------------------------------------------------------------------
 const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
   0, 0, 0, 0x0D, 0x49, 0x48, 0x44, 0x52]) // png magic + ihdr head

@@ -167,7 +167,17 @@ app.MapPost("/docs/{id}/links", async (
     if (role is not CollabCanvas.Api.Auth.RoomRole.Viewer and
         not CollabCanvas.Api.Auth.RoomRole.Editor)
         return Results.BadRequest("role viewer|editor only");
-    var token = await members.NewLinkAsync(id, role.Value);
+    // Optional expiry — a bearer link shouldn't live forever by
+    // default. ttlHours 1..720 (30d); omitted = no expiry.
+    TimeSpan? ttl = null;
+    if (body.TryGetProperty("ttlHours", out var th) &&
+        th.ValueKind == System.Text.Json.JsonValueKind.Number)
+    {
+        var hours = th.GetDouble();
+        if (hours is < 1 or > 720) return Results.BadRequest("ttlHours 1..720");
+        ttl = TimeSpan.FromHours(hours);
+    }
+    var token = await members.NewLinkAsync(id, role.Value, ttl);
     return Results.Ok(new { token, role = CollabCanvas.Api.Auth.MembershipStore.Name(role.Value) });
 });
 

@@ -300,13 +300,18 @@ export default function App() {
     [token])
   const copyLink = useCallback(async (r: 'viewer' | 'editor') => {
     try {
+      const ttlInput =
+        document.getElementById('link-ttl') as HTMLInputElement | null
+      const ttlH = ttlInput?.valueAsNumber
+      const body: Record<string, unknown> = { role: r }
+      if (ttlH && ttlH > 0) body['ttlHours'] = ttlH
       const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/links`,
-        { method: 'POST', body: JSON.stringify({ role: r }) })
+        { method: 'POST', body: JSON.stringify(body) })
       if (!res.ok) { setShareErr(`link failed: ${res.status}`); return }
       const { token: g } = await res.json() as { token: string }
       await navigator.clipboard.writeText(
         `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}&grant=${encodeURIComponent(g)}`)
-      setShareErr(`${r} link copied`)
+      setShareErr(`${r} link copied${ttlH ? ` (${ttlH}h)` : ''}`)
     } catch { setShareErr('link request failed') }
   }, [authedFetch, docId])
   const loadMembers = useCallback(async () => {
@@ -749,6 +754,13 @@ export default function App() {
               copy view link</button>
             <button className="tool" onClick={() => void copyLink('editor')}>
               copy edit link</button>
+            {/* Bearer links die on time when set — blank = forever.
+                A leaked expiring link stops mattering by itself. */}
+            <div className="hist-row" style={{ gap: 4 }}>
+              <input className="insp-input" id="link-ttl" type="number"
+                min={1} max={720} placeholder="exp h" style={{ width: 56 }}
+                title="link expiry in hours (blank = never)" />
+            </div>
             <div className="hist-row" style={{ gap: 4 }}>
               <input className="insp-input" id="share-login"
                 placeholder="login" style={{ width: 80 }} />
