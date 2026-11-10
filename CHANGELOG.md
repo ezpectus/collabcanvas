@@ -8,6 +8,17 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-10 — T-52 + диаграммы/архитектура [D]
+
+- T-52: blob upload — Lua-атомарная квота+запись (гонка SCARD→SADD
+  закрыта); GC-свип в WriteSnapshot — orphan-блобы >120s собираются,
+  destroy чистит ключи (57b516a)
+- refactor: Program.cs 560→65, Endpoints/{Auth,Doc,Blob} + общий
+  Authz — HTTP-твин EffectiveRole (57b516a)
+- Диаграммы: authz-flow, doc-lifecycle, comments-flow,
+  blobs-lifecycle mmd (02957a3); архитектура §23-26 под текущее
+  состояние; T-52 тикет (bb17895); xUnit 47/47, бот 104/104
+
 ## 2026-11-10 — T-44..T-51 жизненный цикл + социальные фичи [D]
 
 - T-44: link list + revoke в share-панели — линк больше не слепнет
