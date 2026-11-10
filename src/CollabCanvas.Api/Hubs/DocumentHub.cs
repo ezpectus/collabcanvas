@@ -159,8 +159,12 @@ public sealed class DocumentHub(
         var room = rooms.GetOrCreate(update.DocId);
         // Tracker stores every update (join snapshot stays fresh) and
         // rate-limits the fanout — a spammy client can't flood the room.
-        var named = Context.Items["login"] is string login
-            ? update with { Name = login }
+        // Name is stamped only while the session is alive — a dead
+        // token's cursor must not keep wearing the login it had at
+        // connect time.
+        var named = Context.Items["token"] is string t &&
+            await users.ResolveAsync(t) is { } w
+            ? update with { Name = w.login }
             : update;
         if (room.Presence.Update(update.ClientId, named, DateTimeOffset.UtcNow))
             // Goes through the transport so OTHER instances see it too
