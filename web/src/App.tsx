@@ -751,6 +751,7 @@ export default function App() {
             <b>Shortcuts</b>
             {([
               ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
+              ['ctrl+g', 'group'], ['ctrl+shift+g', 'ungroup'],
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
               ['top handle / shift+BR', 'rotate · shift=15°'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],

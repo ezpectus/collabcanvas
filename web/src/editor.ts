@@ -116,6 +116,31 @@ export class Editor {
 
   private id(): string { return `o-${Math.random().toString(36).slice(2, 10)}` }
 
+  /** T-35: objects sharing the clicked one's `group` tag (or just
+      itself when ungrouped). */
+  private expandGroup(hit: { id: string; props: Record<string, unknown> }): string[] {
+    const gid = hit.props['group']
+    if (typeof gid !== 'string' || !gid) return [hit.id]
+    return this.objects()
+      .filter((o) => o.props['group'] === gid).map((o) => o.id)
+  }
+
+  /** Tag/untag the mutable selection — one undo record either way.
+      null clears the prop (falsy = ungrouped); previous tag values
+      are restored on undo per object. */
+  private setGroup(tag: string | null): void {
+    const inv: WireOp[] = [], fwd: WireOp[] = []
+    for (const id of this.mutable()) {
+      const o = this.find(id)
+      if (!o) continue
+      inv.push({ type: 'Patch', payload: {
+        id, props: { group: o.props['group'] ?? null } } })
+      fwd.push({ type: 'Patch', payload: { id, props: { group: tag } } })
+    }
+    if (fwd.length) { this.recordUndo(inv, fwd); this.submitAll(fwd) }
+    this.redraw()
+  }
+
   // --- T-17 undo/redo -----------------------------------------------------
   private recordUndo(inv: WireOp[], fwd: WireOp[]): void {
     this.undoStack.push({ inv, fwd })
@@ -283,13 +308,22 @@ export class Editor {
 
     const hit = this.index.hitTest(this.session.model, wx, wy)
     if (hit && shift) {
-      // Shift-click toggles membership.
-      if (this.selected.has(hit.id)) this.selected.delete(hit.id)
-      else this.selected.add(hit.id)
+      // Shift-click toggles membership — a grouped object pulls its
+      // whole tag along (group = flat tag, not a transform parent).
+      const ids = this.expandGroup(hit)
+      const allIn = ids.every((id) => this.selected.has(id))
+      for (const id of ids)
+        if (allIn) this.selected.delete(id); else this.selected.add(id)
       this.drag = { mode: 'pan-hint', startX: wx, startY: wy,
                     orig: new Map(), center: null, moved: false, handle: -1 }
     } else if (hit) {
-      if (!this.selected.has(hit.id)) { this.selected.clear(); this.selected.add(hit.id) }
+      // Click on a grouped object selects the whole tag — Canva's
+      // "click selects the group" (entering a group is dblclick-territory
+      // and deliberately out of scope for the flat-tag model).
+      if (!this.selected.has(hit.id)) {
+        this.selected.clear()
+        for (const id of this.expandGroup(hit)) this.selected.add(id)
+      }
       // Locked ids can be in `selected` via the layers panel — they
       // must not ride along a group move started on a sibling.
       this.drag = {
@@ -637,6 +671,15 @@ export class Editor {
         this.redraw(); return
       }
       this.selected.clear(); this.redraw(); return
+    }
+    // T-35: flat group tags — ctrl+g tags selection, ctrl+shift+g untags.
+    // A group is just a shared `group` prop (LWW merges it for free);
+    // nested groups are deliberately out (that would be a real tree).
+    if (ctrl && shift && (key === 'g' || key === 'G')) {
+      this.setGroup(null); return
+    }
+    if (ctrl && (key === 'g' || key === 'G')) {
+      this.setGroup(`g-${Math.random().toString(36).slice(2, 8)}`); return
     }
     if (ctrl && (key === 'a' || key === 'A')) {
       // Ctrl+A: every unlocked object — standard select-all skips
