@@ -1,0 +1,33 @@
+%% CollabCanvas — жизненный цикл документа (T-19/26/27/45/46).
+%% Update when: новые состояния, семантика delist/destroy, re-claim.
+stateDiagram-v2
+    [*] --> Open: implicit join<br/>(docs += id)
+    [*] --> Owned: POST /docs<br/>authed (creator=Owner)
+
+    Open: Unowned / legacy-open<br/>любой join → Editor<br/>members-hash пуст
+    Owned: members ≥ 1<br/>owner|admin|editor|viewer + links
+
+    Owned --> Open: последний член удалён<br/>(members-hash опустел →<br/>owned:docs -= id)
+    Owned --> Owned: members/links/<br/>meta/rename/transfer
+
+    Owned --> Delisted: DELETE /docs/{id}<br/>admin+ (обратимо)
+    Delisted --> Owned: re-join<br/>(docs += id снова)
+
+    Owned --> Dead: DELETE ?hard=1<br/>OWNER ONLY — необратимо
+    Dead --> [*]
+
+    note right of Open
+        Open никогда не становится Owned:
+        first-claim запрещён — POST /docs
+        минтит НОВЫЙ id, а не забирает
+        чужой анонимный документ.
+    end note
+
+    Dead: TOMBSTONE doc:{id}:dead<br/>+ всё стёрто: members · links · meta ·<br/>ops · snap · owner · blobs · comments ·<br/>docs/owned:docs/user:*:docs
+    note right of Dead
+        EffectiveRole/CallerRole проверяют
+        tombstone ПЕРВЫМ — иначе док
+        воскрес бы через legacy-open.
+        Re-claim id (POST /docs) →
+        ResurrectAsync снимает маркер.
+    end note

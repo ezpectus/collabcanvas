@@ -614,6 +614,10 @@ RedisRoomTransport.cs`, `Api/Presence/OpRouter.cs`, хаб переписан.
    обходил валидацию. Фикс: повторная валидация на владельце
    (defense in depth).
 
+**Статус обновлён:** auth/роли/шеринг реализованы (§23+). Старое
+утверждение «docId = открытый URL» остаётся верным только для
+unowned-документов (legacy-open ветка).
+
 **Остатки честные:** auth всё ещё нет (docId = открытый URL —
 rate-limit и валидация сдерживают мусор, не доступ); rate-limit
 per-connection — распределённый спам с N сокетов не ловится;
@@ -673,3 +677,69 @@ Redis-сбой → локальная доставка (fail-open как у ос
 защита от выгрузки комнаты с молчаливыми зрителями (на своём
 инстансе — чужих зрителей видно только через :pres-трафик, что
 честно оговорено).
+
+---
+
+## 23. Auth + роли + жизненный цикл (T-26, T-43..T-47)
+
+**Модель:** серверные сессии `sess:{token}` (7d sliding TTL,
+отзыв = key delete), BCrypt-хэши. Никакого JWT — revocation важнее
+stateless-удобства. Роли живут в `doc:{id}:members` вне doc-модели
+(Patch не может выписать себе права — это была бы дыра уровня
+«self-escalation через один op»).
+
+**Разрешение роли — одна цепочка, два входа:** `Authz.CallerRole`
+(HTTP) и `DocumentHub.EffectiveRole` (SignalR) реализуют одинаковый
+порядок: tombstone → member > link > legacy-open. Перепроверка
+сессии и роли на КАЖДОМ op — revoke/logout бьют живой сокет без
+кэша. Диаграмма: `docs/diagrams/mmd/authz-flow.mmd`.
+
+**Жизненный цикл:** unowned-open (legacy) ↔ owned ↔ delisted ↔
+dead. Destroy необратим, owner-only, сносит всё включая blob'ы и
+комменты; tombstone `doc:{id}:dead` проверяется первым — иначе
+удалённый док воскресал бы через fallback «unowned = open».
+Transfer — только owner → существующему члену, себя в admin.
+Диаграмма: `docs/diagrams/mmd/doc-lifecycle.mmd`.
+
+**Сессии-индекс `user:{id}:sess`:** нужен ровно для одного —
+смена пароля убивает чужие токены. Logout чистит запись; TTL-сироты
+в сете безвредны.
+
+## 24. Социальные и editor-слои (T-48..T-51)
+
+**Комменты:** `doc:{id}:comments` hash — разговор, не канвас:
+нет LWW/журнала/undo. Add/Delete — hub-методы с per-call ролью
+(тот же revoke-контракт); REST GET — только бэклог при открытии
+панели. Диаграмма: `docs/diagrams/mmd/comments-flow.mmd`.
+
+**Group isolation:** `editor.isolated` — локальное состояние жеста
+(не op, не props): dblclick входит в тег, жесты видят только его
+членов, чужие рисуются dimmed 0.22, выход — Esc/пустота/ungroup/
+ленивая смерть тега.
+
+**Co-typing:** кейстрок = живой `session.submit('Patch')` —
+оптимистичный local+wire одним вызовом. Reversal раннего решения
+«один Patch на commit»: цена оказалась нулевой (rate-limit,
+dedup на месте), а живая печать — это и есть мультиплеер.
+Whole-string LWW — per-char CRDT осознанно не введён.
+
+**Touch:** единый pointer-слой (mouse/pen/finger): 1 pointer =
+жест инструмента; 2 → pinch (zoom по dist-отношению, pan по
+midpoint-дельте); setPointerCapture на канвасе.
+
+## 25. Blobs + GC (T-36, 57b516a)
+
+Upload атомарен: Lua скрипт проверяет квоту (50/док) и пишет
+blob+meta+set одной транзакцией — параллельный upload не проскочит
+SCARD→SADD щель. meta.ts сеет grace-окно. Чтение — member|grant,
+nosniff. Сборка мусора — на записи снапшота (doc-истина): сироты
+старше 120s удаляются; destroy сносит все blob-ключи документа.
+Диаграмма: `docs/diagrams/mmd/blobs-lifecycle.mmd`.
+
+## 26. Endpoint-модули (57b516a)
+
+`Program.cs` вырос до ~560 строк и был разрезан: `Endpoints/`
+по доменам — `AuthEndpoints`, `DocEndpoints`, `BlobEndpoints` +
+общий `Authz` (CallerRole/Bearer — HTTP-твин EffectiveRole).
+Program.cs остаётся composition root: services/CORS/health/hub,
+ни одной бизнес-лямбды.

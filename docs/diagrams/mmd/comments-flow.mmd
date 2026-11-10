@@ -1,0 +1,28 @@
+%% CollabCanvas — комменты (T-48): НЕ doc-state. Хранилище отдельное,
+%% realtime через hub-методы с per-call ролью (тот же revoke-контракт,
+%% что у SubmitOp). Update when: форма записи, права, транспорт.
+sequenceDiagram
+    participant V as Viewer/Editor (UI)
+    participant H as DocumentHub
+    participant S as DocCommentStore<br/>doc:{id}:comments hash
+    participant G as Группа сокета
+
+    Note over V: открытие панели
+    V->>H: (REST) GET /docs/{id}/comments?grant
+    H->>S: ListAsync — viewer+ (CallerRole)
+    S-->>V: [{id,a,t,ts}...] отсортировано по ts
+
+    Note over V: добавление
+    V->>H: AddComment(docId, text)
+    H->>H: EffectiveRole ≥ Editor<br/>(viewer → HubException forbidden)
+    H->>S: AddAsync — cap 500/doc, 1000 chars<br/>author = login | guest·conn6
+    H->>G: "comment" {kind:add, id,a,t,ts}
+    G-->>V: session.comments += row → панель
+
+    Note over V: удаление
+    V->>H: DeleteComment(docId, cid)
+    H->>H: EffectiveRole ≠ null → GetAsync<br/>author==login ИЛИ role≥Admin<br/>(чужое = молча нет)
+    H->>S: RemoveAsync
+    H->>G: "comment" {kind:del, id}
+
+    Note over S: destroy дока сносит ключ<br/>через MembershipStore.DestroyAsync

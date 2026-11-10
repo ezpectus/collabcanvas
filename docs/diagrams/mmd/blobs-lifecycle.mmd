@@ -1,0 +1,26 @@
+%% CollabCanvas — жизненный цикл blob'а (T-36 + GC): upload → src-оп →
+%% чтение img → sweep на снапшоте / destroy. Update when: капы, grace,
+%% места удаления ключей.
+flowchart LR
+    subgraph up["Upload (editor+)"]
+        U1["POST /docs/{id}/blobs<br/>png|jpeg|webp|gif ≤ 5MB"] --> U2{"Lua АТОМАРНО:<br/>SCARD blobs < 50?"}
+        U2 -->|нет| U3["429 quota"]
+        U2 -->|да| U4["SET blob:{id}<br/>HSET meta {doc,type,size,ts}<br/>SADD doc:{id}:blobs"]
+    end
+
+    U4 --> C["Create-оп объекта image<br/>props.src = blobId"]
+    C --> R["Renderer: imgFor(src)<br/>GET /blobs/{id}?token|grant<br/>nosniff"]
+
+    subgraph gc["GC — два пути"]
+        S1["Room каждые 100 опов →<br/>WriteSnapshot → SweepBlobs"] --> S2{"src ∈ snapshot.props?"}
+        S2 -->|"нет И ts < now−120s"| S3["DEL blob + meta + SREM<br/>(orphan собран)"]
+        S2 -->|"да ИЛИ свежий (grace)"| S4["выживает"]
+        D1["DELETE ?hard=1"] --> D2["DestroyAsync:<br/>все blob-ключи дока<br/>+ doc:{id}:blobs"]
+    end
+
+    U4 -.->|"между upload и Create<br/>сирота < 120s"| S4
+    C -.->|"src виден в снапшоте"| S2
+
+    style U3 fill:#5c2a2a,color:#fff
+    style S3 fill:#2a5c3a,color:#fff
+    style D2 fill:#5c2a2a,color:#fff

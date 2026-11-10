@@ -1,0 +1,19 @@
+%% CollabCanvas — разрешение роли (T-26, T-43..T-47): единая цепочка
+%% для HTTP (Authz.CallerRole) и SignalR (DocumentHub.EffectiveRole).
+%% Update when: порядок веток, новый источник роли, tombstone-логика.
+flowchart TD
+    Q["Запрос: op / REST / join<br/>docId + (Bearer token? | grant?)"] --> DEAD{"doc:{id}:dead<br/>существует?"}
+    DEAD -->|"да — destroy'ed"| NULL1["denied —<br/>tombstone блокирует<br/>legacy-воскрешение"]
+    DEAD -->|нет| TOK{"sess:{token} жив?<br/>(перепроверка КАЖДЫЙ вызов —<br/>logout/revoke бьют живой сокет)"}
+    TOK -->|да| MEM{"doc:{id}:members<br/>[login] → роль?"}
+    MEM -->|"owner|admin|editor|viewer"| ROLE["роль = member<br/>(побеждает линк —<br/>viewer-линк не даунгрейдит члена)"]
+    MEM -->|нет записи| GR
+    TOK -->|нет| GR{"grant валиден?<br/>doc:{id}:links [grant]<br/>role или role|expiryUnix"}
+    GR -->|"viewer|editor (exp не прошёл)"| ROLE2["роль = link<br/>owner/admin линком НЕ выдаются"]
+    GR -->|"нет / истёк (lazy delete)"| OWN{"owned:docs<br/>содержит id?"}
+    OWN -->|"нет — док ничей"| LEG["роль = Editor<br/>legacy-open"]
+    OWN -->|"да — док чей-то"| NULL2["denied —<br/>чужой owned-док"]
+
+    style NULL1 fill:#5c2a2a,color:#fff
+    style NULL2 fill:#5c2a2a,color:#fff
+    style LEG fill:#2a4a5c,color:#fff
