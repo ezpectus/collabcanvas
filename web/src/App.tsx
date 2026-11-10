@@ -72,6 +72,8 @@ function Inspector({ editor, model }: {
     ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
     ['rot', num(o.props, 'rot')],
   ]
+  if (o.kind === 'text')
+    fields.push(['fontSize', num(o.props, 'fontSize', 16)])
   return (
     <aside className="history-panel inspector-panel">
       <b>{o.kind} · {id.slice(0, 8)}</b>
@@ -80,8 +82,9 @@ function Inspector({ editor, model }: {
           <span className="hist-seq">{k}</span>
           <input className="insp-input" type="number" step="1"
             // key+defaultValue: uncontrolled so typing doesn't fight
-            // the wire echo; remounts when the object changes.
-            key={`${id}:${k}`}
+            // the wire echo; v in key remounts on remote/local prop
+            // change so the panel never shows stale numbers.
+            key={`${id}:${k}:${v}`}
             defaultValue={Math.round(v * 10) / 10}
             onBlur={(e) => {
               const nv = parseFloat(e.target.value)
