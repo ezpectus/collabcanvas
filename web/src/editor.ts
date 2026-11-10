@@ -71,6 +71,14 @@ export class Editor {
   ) {}
 
   private objects(): CanvasObject[] { return this.session.model.objects() }
+  /** Selected ids minus locked — every mutation path uses this so a
+   *  layers-selected locked object can't be deleted/nudged/aligned/
+   *  duplicated/recolored. Selection itself stays (unlock needs it). */
+  private mutable(): string[] {
+    return [...this.selected].filter(
+      (id) => !this.find(id)?.props['locked'])
+  }
+
   private find(id: string): CanvasObject | undefined {
     return this.objects().find((o) => o.id === id)
   }
@@ -138,7 +146,9 @@ export class Editor {
    *  undo recorded per changed key. Shared by any numeric input UI. */
   applyProps(id: string, props: Record<string, unknown>): void {
     const o = this.find(id)
-    if (!o) return
+    // 'locked' itself is the only prop a locked object will accept —
+    // everything else is gated by the lock.
+    if (!o || (o.props['locked'] && !('locked' in props))) return
     const invProps: Record<string, unknown> = {}
     const fwdProps: Record<string, unknown> = {}
     for (const k in props)
@@ -159,7 +169,7 @@ export class Editor {
   applyColor(c: string): void {
     this.color = c
     const inv: WireOp[] = [], fwd: WireOp[] = []
-    for (const id of this.selected) {
+    for (const id of this.mutable()) {
       const o = this.find(id)
       if (!o) continue
       const key = (o.kind === 'line' || o.kind === 'path') ? 'stroke' : 'fill'
@@ -581,7 +591,7 @@ export class Editor {
     if (key === 'Delete' || key === 'Backspace') {
       // Compensating-op undo: inverse = Create with the pre-delete state.
       const inv: WireOp[] = [], fwd: WireOp[] = []
-      for (const id of this.selected) {
+      for (const id of this.mutable()) {
         const o = this.find(id)
         if (!o) continue
         inv.push({ type: 'Create', payload: {
@@ -649,7 +659,7 @@ export class Editor {
     if (key === '=' || key === '-') {
       const dpx = key === '=' ? 2 : -2
       const inv: WireOp[] = [], fwd: WireOp[] = []
-      for (const oid of this.selected) {
+      for (const oid of this.mutable()) {
         const o = this.find(oid)
         if (!o || o.kind !== 'text') continue
         const size = Math.max(6, num(o.props, 'fontSize', 16) + dpx)
@@ -677,7 +687,7 @@ export class Editor {
         (key === 'h' || key === 'H' ? 'x' : key === 'v' || key === 'V' ? 'y' : null)
       if (axis) {
         const boxes = new Map<string, BBox>()
-        for (const oid of this.selected) {
+        for (const oid of this.mutable()) {
           const o = this.find(oid)
           const b = o && boundsOf(o)
           if (o && b && (o.props['x'] !== undefined)) boxes.set(oid, b)
@@ -747,7 +757,7 @@ export class Editor {
     if (a && this.selected.size) {
       const dx = a[0] * (shift ? 10 : 1), dy = a[1] * (shift ? 10 : 1)
       const inv: WireOp[] = [], fwd: WireOp[] = []
-      for (const oid of this.selected) {
+      for (const oid of this.mutable()) {
         const o = this.find(oid)
         if (!o) continue
         const flush: Record<string, unknown> = {}
@@ -770,7 +780,7 @@ export class Editor {
   private duplicate(): void {
     const created = new Set<string>()
     const inv: WireOp[] = [], fwd: WireOp[] = []
-    for (const oid of this.selected) {
+    for (const oid of this.mutable()) {
       const o = this.find(oid)
       if (!o) continue
       const nid = this.id()
@@ -807,6 +817,7 @@ export class Editor {
     const i = objs.findIndex((o) => this.selected.has(o.id))
     if (i < 0) return
     const o = objs[i]!
+    if (o.props['locked']) return // lock gates mutations, not just gestures
     const up = i + dir
     if (up < 0 || up >= objs.length) return // already at edge
     const beyond = objs[up + dir]
@@ -829,7 +840,7 @@ export class Editor {
     if (objs.length === 0) return
     const edge = dir > 0 ? objs.at(-1)!.z : objs[0]!.z
     const inv: WireOp[] = [], fwd: WireOp[] = []
-    for (const oid of this.selected) {
+    for (const oid of this.mutable()) {
       const o = this.find(oid)
       if (!o) continue
       const z = dir > 0 ? FractionalIndex.after(edge) : FractionalIndex.before(edge)
