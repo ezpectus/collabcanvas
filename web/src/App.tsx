@@ -86,6 +86,7 @@ function Inspector({ editor, model }: {
             // change so the panel never shows stale numbers.
             key={`${id}:${k}:${v}`}
             defaultValue={Math.round(v * 10) / 10}
+            disabled={!!o.props['locked']}
             onBlur={(e) => {
               const nv = parseFloat(e.target.value)
               if (Number.isFinite(nv)) editor.applyProps(id, { [k]: nv })
@@ -451,7 +452,7 @@ export default function App() {
               ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
-              ['top handle / shift+BR', 'rotate'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],
+              ['top handle / shift+BR', 'rotate · shift=15°'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],
               ['ctrl+d', 'duplicate'], ['ctrl+shift+l', 'lock/unlock'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],

@@ -395,12 +395,19 @@ export class Editor {
     if ((d.mode === 'rotate' || d.mode === 'grotate') && d.center) {
       const a0 = Math.atan2(d.startY - d.center.y, d.startX - d.center.x)
       const a1 = Math.atan2(wy - d.center.y, wx - d.center.x)
-      const deg = ((a1 - a0) * 180) / Math.PI
+      let deg = ((a1 - a0) * 180) / Math.PI
       if (d.mode === 'rotate') {
-        for (const [oid, orig] of d.orig)
-          this.patchThrottled(oid, { rot: (num(orig, 'rot') + deg + 360) % 360 })
+        for (const [oid, orig] of d.orig) {
+          // Shift = snap the ABSOLUTE angle to 15° (Figma convention).
+          const nr = num(orig, 'rot') + deg
+          this.patchThrottled(oid, {
+            rot: aspect ? Math.round(nr / 15) * 15 % 360
+                        : (nr + 360) % 360 })
+        }
         return
       }
+      // grotate snaps the group delta — pivot geometry stays on grid.
+      if (aspect) deg = Math.round(deg / 15) * 15
       // grotate: every object swings around the union center; boxes
       // also accumulate their own rot, line/path geometry rotates
       // point-wise (they have no rot prop). rad precomputed once.
