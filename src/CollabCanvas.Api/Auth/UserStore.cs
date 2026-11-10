@@ -60,8 +60,40 @@ public sealed class UserStore(IConnectionMultiplexer redis)
             : (id.ToString(), login.ToString()!);
     }
 
-    public Task LogoutAsync(string token) =>
-        Db.KeyDeleteAsync($"sess:{token}");
+    public async Task LogoutAsync(string token)
+    {
+        var id = await Db.StringGetAsync($"sess:{token}");
+        await Db.KeyDeleteAsync($"sess:{token}");
+        if (!id.IsNullOrEmpty)
+            await Db.SetRemoveAsync(SSet(id!), token);
+    }
+
+    // user:{id}:sess — set of live tokens so a password change can
+    // revoke every OTHER session while keeping the caller's. Stale
+    // entries (TTL-expired) just miss on delete — harmless.
+    private static string SSet(string id) => $"user:{id}:sess";
+
+    /// <summary>Verify old hash → rehash → kill all sessions except
+    /// keepToken. A changed password must cut off whoever holds an
+    /// old token; the changer stays logged in.</summary>
+    public async Task<bool> ChangePasswordAsync(
+        string id, string login,
+        string oldPw, string newPw, string keepToken)
+    {
+        var h = await Db.HashGetAsync($"user:{login}", "hash");
+        if (h.IsNullOrEmpty ||
+            !BCrypt.Net.BCrypt.Verify(oldPw, h.ToString()))
+            return false;
+        await Db.HashSetAsync($"user:{login}", "hash",
+            BCrypt.Net.BCrypt.HashPassword(newPw, 11));
+        var toks = await Db.SetMembersAsync(SSet(id));
+        await Db.KeyDeleteAsync(SSet(id));
+        await Db.SetAddAsync(SSet(id), keepToken);
+        foreach (var t in toks)
+            if (t.ToString() != keepToken)
+                await Db.KeyDeleteAsync($"sess:{t}");
+        return true;
+    }
 
     private async Task<string> NewSession(string userId)
     {
@@ -70,6 +102,7 @@ public sealed class UserStore(IConnectionMultiplexer redis)
             .Replace('+', '-').Replace('/', '_');
         await Db.StringSetAsync($"sess:{token}", userId,
             TimeSpan.FromDays(7));
+        await Db.SetAddAsync(SSet(userId), token);
         return token;
     }
 

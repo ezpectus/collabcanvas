@@ -531,6 +531,63 @@ ok('destroy: /ops denied on dead doc',
   (await authed(`/ops?doc=${OWN5}`, reg5.token)).status === 403)
 await M.conn.stop(); await DDG.conn.stop()
 
+// --- ownership transfer: owner hands the seat, drops to admin;
+// only a member can receive it, only the owner can give it.
+const u7 = `to_${Date.now().toString(36)}`
+const reg7 = await (await authPost('register',
+  { login: u7, password: 'secretpw' })).json()
+const u8 = `tn_${Date.now().toString(36)}`
+const reg8 = await (await authPost('register',
+  { login: u8, password: 'secretpw' })).json()
+const OWN7 = (await (await authed('/docs', reg7.token,
+  { method: 'POST' })).json()).id
+await authed(`/docs/${OWN7}/members`, reg7.token,
+  { method: 'POST', body: JSON.stringify({ login: u8, role: 'editor' }) })
+ok('transfer: non-owner cannot give the seat',
+  (await authed(`/docs/${OWN7}/owner`, reg8.token,
+    { method: 'POST', body: JSON.stringify({ login: u7 }) }))
+    .status === 403)
+ok('transfer: stranger target rejected',
+  (await authed(`/docs/${OWN7}/owner`, reg7.token,
+    { method: 'POST', body: JSON.stringify({ login: 'ghost_x' }) }))
+    .status === 400)
+ok('transfer: owner → member accepted',
+  (await authed(`/docs/${OWN7}/owner`, reg7.token,
+    { method: 'POST', body: JSON.stringify({ login: u8 }) }))
+    .status === 204)
+ok('transfer: new owner can destroy',
+  (await authed(`/docs/${OWN7}?hard=1`, reg8.token,
+    { method: 'DELETE' })).status === 204)
+
+// --- password change: old dies, other sessions die, caller stays.
+const u9 = `pw_${Date.now().toString(36)}`
+await authPost('register', { login: u9, password: 'secretpw' })
+const t1 = (await (await authPost('login',
+  { login: u9, password: 'secretpw' })).json()).token
+const t2 = (await (await authPost('login',
+  { login: u9, password: 'secretpw' })).json()).token
+ok('pw: second session alive before change',
+  (await authed('/auth/me', t2)).status === 200)
+ok('pw: wrong old rejected',
+  (await authed('/auth/password', t1,
+    { method: 'POST',
+      body: JSON.stringify({ old: 'nope', new: 'newpw123' }) }))
+    .status === 403)
+ok('pw: change accepted',
+  (await authed('/auth/password', t1,
+    { method: 'POST',
+      body: JSON.stringify({ old: 'secretpw', new: 'newpw123' }) }))
+    .status === 204)
+ok('pw: other session killed',
+  (await authed('/auth/me', t2)).status === 401)
+ok('pw: caller session survives',
+  (await authed('/auth/me', t1)).status === 200)
+ok('pw: old password dead, new one works',
+  (await authPost('login', { login: u9, password: 'secretpw' }))
+    .status === 401 &&
+  (await authPost('login', { login: u9, password: 'newpw123' }))
+    .status === 200)
+
 console.log(failures === 0
   ? `\n${tag}: ALL SCENARIOS PASSED`
   : `\n${tag}: ${failures} check(s) FAILED`)

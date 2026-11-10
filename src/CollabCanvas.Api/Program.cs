@@ -194,6 +194,33 @@ app.MapDelete("/docs/{id}/links/{token}", async (
     return Results.NoContent();
 });
 
+// Ownership transfer — owner only, target must already be a member
+// (handing a doc to a stranger/link-token isn't allowed). Former
+// owner drops to admin — keeps manage rights, loses destroy/transfer.
+app.MapPost("/docs/{id}/owner", async (
+    string id,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body, HttpRequest req) =>
+{
+    var caller = await CallerRole(members, users, req, id);
+    if (caller != CollabCanvas.Api.Auth.RoomRole.Owner)
+        return Results.StatusCode(403);
+    var login = body.TryGetProperty("login", out var l)
+        ? l.GetString() : null;
+    if (string.IsNullOrWhiteSpace(login))
+        return Results.BadRequest("login required");
+    if (await members.RoleOfAsync(id, login) is not { } cur ||
+        cur == CollabCanvas.Api.Auth.RoomRole.Owner)
+        return Results.BadRequest("target must be a non-owner member");
+    var who = await users.ResolveAsync(Bearer(req));
+    await members.SetRoleAsync(id, login,
+        CollabCanvas.Api.Auth.RoomRole.Owner);
+    await members.SetRoleAsync(id, who!.Value.login,
+        CollabCanvas.Api.Auth.RoomRole.Admin);
+    return Results.NoContent();
+});
+
 app.MapDelete("/docs/{id}/members/{login}", async (
     string id, string login,
     CollabCanvas.Api.Auth.MembershipStore members,
@@ -433,6 +460,29 @@ app.MapPost("/auth/logout", async (
     var token = Bearer(req);
     if (token is not null) await users.LogoutAsync(token);
     return Results.NoContent();
+});
+
+// Password change: verifies the old hash, rehashes, then revokes
+// every OTHER live session — a leaked old token dies with the
+// password. The caller's own token survives.
+app.MapPost("/auth/password", async (
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body, HttpRequest req) =>
+{
+    var token = Bearer(req);
+    var who = await users.ResolveAsync(token);
+    if (who is null || token is null) return Results.Unauthorized();
+    var oldPw = body.TryGetProperty("old", out var o)
+        ? o.GetString() : null;
+    var newPw = body.TryGetProperty("new", out var n)
+        ? n.GetString() : null;
+    if (string.IsNullOrEmpty(oldPw) ||
+        string.IsNullOrEmpty(newPw) || newPw.Length < 6)
+        return Results.BadRequest("old + new(>=6) required");
+    return await users.ChangePasswordAsync(
+        who.Value.id, who.Value.login, oldPw, newPw, token)
+        ? Results.NoContent()
+        : Results.StatusCode(403);
 });
 
 static string? Bearer(HttpRequest req)

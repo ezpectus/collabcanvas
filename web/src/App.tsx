@@ -360,6 +360,14 @@ export default function App() {
       location.search = q.toString()
     } else setShareErr(`destroy failed: ${res.status}`)
   }, [authedFetch, docId])
+  const transferOwner = useCallback(async (login: string) => {
+    if (!confirm(`Make ${login} the owner? You drop to admin.`)) return
+    const res = await authedFetch(
+      `/docs/${encodeURIComponent(docId)}/owner`,
+      { method: 'POST', body: JSON.stringify({ login }) })
+    if (res.ok) { setRole('admin'); void loadMembers() }
+    else setShareErr(`transfer failed: ${res.status}`)
+  }, [authedFetch, docId, loadMembers])
   // T-27: doc name lives in doc:{id}:meta — rename is admin+.
   const [docName, setDocName] = useState<string | null>(null)
   const loadMeta = useCallback(async () => {
@@ -394,6 +402,19 @@ export default function App() {
     await authedFetch('/auth/logout', { method: 'POST' }).catch(() => {})
     localStorage.removeItem('cc_token'); localStorage.removeItem('cc_login')
     setToken(null); setLogin(null)
+  }, [authedFetch])
+  // Server keeps this session, kills every other token — so the
+  // UI doesn't log itself out but a leaked old session dies.
+  const changePass = useCallback(async () => {
+    const oldPw = prompt('current password')
+    if (!oldPw) return
+    const newPw = prompt('new password (min 6)')
+    if (!newPw) return
+    const res = await authedFetch('/auth/password',
+      { method: 'POST', body: JSON.stringify({ old: oldPw, new: newPw }) })
+    setAuthErr(res.ok ? 'password changed'
+      : res.status === 403 ? 'wrong current password'
+      : `change failed: ${res.status}`)
   }, [authedFetch])
   const [paintMode, setPaintMode] = useState<'fill' | 'stroke'>('fill')
   const pickFromLayers = useCallback((id: string) => {
@@ -557,6 +578,8 @@ export default function App() {
           <>
             <span className="pill" title="signed in">
               👤 {login}{role ? ` · ${role}` : ''}</span>
+            <button className="tool" onClick={() => void changePass()}>
+              pass</button>
             <button className="tool" onClick={() => void logout()}>
               logout</button>
           </>
@@ -819,6 +842,10 @@ export default function App() {
               <div className="hist-row" key={l}>
                 <span className="hist-who">{l}</span>
                 <span className="hist-type">{r}</span>
+                {role === 'owner' && r !== 'owner' && (
+                  <button className="tool" title="make owner (you become admin)"
+                    onClick={() => void transferOwner(l)}>own</button>
+                )}
               </div>
             ))}
             {linkList && Object.keys(linkList).length > 0 && <b>Links</b>}
