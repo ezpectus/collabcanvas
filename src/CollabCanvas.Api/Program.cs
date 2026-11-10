@@ -17,6 +17,7 @@ builder.Services.AddSingleton<CollabCanvas.Core.Room.IRoomTransport,
 builder.Services.AddSingleton<CollabCanvas.Api.Presence.OpRouter>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CollabCanvas.Api.Presence.OpRouter>());
 builder.Services.AddHostedService<CollabCanvas.Api.Presence.PresenceSweeper>();
+builder.Services.AddSingleton<CollabCanvas.Api.Auth.UserStore>();
 // Redis is the journal (T-5) — the app must boot without it.
 // AbortOnConnectFail=false: the mux returns immediately and retries
 // in the background; /health reports "degraded" until it lands.
@@ -87,6 +88,69 @@ app.MapDelete("/docs/{id}", async (IConnectionMultiplexer redis, string id) =>
     }
     catch (RedisException) { return Results.Ok(); }
 });
+
+// T-26 stage 1: accounts + sessions. Roles/link-grants come in
+// stage 2 — a session today only proves identity (presence name,
+// future membership). Guests keep legacy editor rights by design.
+app.MapPost("/auth/register", async (
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body) =>
+{
+    var login = body.TryGetProperty("login", out var l) ? l.GetString() : null;
+    var pass = body.TryGetProperty("password", out var p) ? p.GetString() : null;
+    if (login is null || pass is null) return Results.BadRequest("login+password");
+    var (res, token) = await users.RegisterAsync(login, pass);
+    return res switch
+    {
+        CollabCanvas.Api.Auth.UserStore.RegResult.Ok =>
+            Results.Ok(new { token, login }),
+        CollabCanvas.Api.Auth.UserStore.RegResult.Taken =>
+            Results.Conflict("login taken"),
+        _ => Results.BadRequest("login 2-32 [a-z0-9_-], pass >= 6"),
+    };
+});
+
+app.MapPost("/auth/login", async (
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body) =>
+{
+    var login = body.TryGetProperty("login", out var l) ? l.GetString() : null;
+    var pass = body.TryGetProperty("password", out var p) ? p.GetString() : null;
+    if (login is null || pass is null) return Results.BadRequest("login+password");
+    var token = await users.LoginAsync(login, pass);
+    // Same answer for unknown user and wrong password — don't leak
+    // which logins exist (standard enumeration hardening).
+    return token is null ? Results.Unauthorized()
+                       : Results.Ok(new { token, login });
+});
+
+// Resolve by Authorization: Bearer <token> or ?token= (SignalR
+// clients can't always set headers on negotiate).
+app.MapGet("/auth/me", async (
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    var token = Bearer(req);
+    var who = await users.ResolveAsync(token);
+    return who is null ? Results.Unauthorized()
+                       : Results.Ok(new { id = who.Value.id, login = who.Value.login });
+});
+
+app.MapPost("/auth/logout", async (
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    var token = Bearer(req);
+    if (token is not null) await users.LogoutAsync(token);
+    return Results.NoContent();
+});
+
+static string? Bearer(HttpRequest req)
+{
+    var h = req.Headers.Authorization.ToString();
+    if (h.StartsWith("Bearer ", StringComparison.Ordinal))
+        return h["Bearer ".Length..];
+    var q = req.Query["token"].ToString();
+    return string.IsNullOrEmpty(q) ? null : q;
+}
 
 app.MapHub<DocumentHub>("/hubs/document");
 

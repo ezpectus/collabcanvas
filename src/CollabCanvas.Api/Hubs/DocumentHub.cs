@@ -20,8 +20,32 @@ public sealed class DocumentHub(
     IRoomTransport transport,
     IOpJournalFactory journals,
     OpRateLimiter opLimit,
-    StackExchange.Redis.IConnectionMultiplexer redis) : Hub
+    StackExchange.Redis.IConnectionMultiplexer redis,
+    CollabCanvas.Api.Auth.UserStore users) : Hub
 {
+    /// T-26: resolve the SignalR access_token once at connect; the
+    /// login becomes the trusted presence name (Name in PresenceUpdate
+    /// is server-owned — clients can't spoof it).
+    public override async Task OnConnectedAsync()
+    {
+        // Browser SignalR can't set WS headers → access_token query;
+        // the Node client CAN → Authorization header. Take either.
+        var http = Context.GetHttpContext();
+        var token = http?.Request.Query["access_token"].ToString();
+        if (string.IsNullOrEmpty(token))
+        {
+            var h = http?.Request.Headers.Authorization.ToString();
+            if (h?.StartsWith("Bearer ", StringComparison.Ordinal) == true)
+                token = h["Bearer ".Length..];
+        }
+        if (await users.ResolveAsync(token) is { } who)
+        {
+            Context.Items["uid"] = who.id;
+            Context.Items["login"] = who.login;
+        }
+        await base.OnConnectedAsync();
+    }
+
     public async Task<JoinResult> JoinDocument(JoinDocumentRequest req)
     {
         var room = rooms.GetOrCreate(req.DocId);
@@ -90,12 +114,15 @@ public sealed class DocumentHub(
         var room = rooms.GetOrCreate(update.DocId);
         // Tracker stores every update (join snapshot stays fresh) and
         // rate-limits the fanout — a spammy client can't flood the room.
-        if (room.Presence.Update(update.ClientId, update, DateTimeOffset.UtcNow))
+        var named = Context.Items["login"] is string login
+            ? update with { Name = login }
+            : update;
+        if (room.Presence.Update(update.ClientId, named, DateTimeOffset.UtcNow))
             // Goes through the transport so OTHER instances see it too
             // (T-12). The client filters its own clientId, so group
             // fanout instead of OthersInGroup is fine.
             await transport.PublishPresenceAsync(
-                new PresenceBroadcast(update.ClientId, update));
+                new PresenceBroadcast(update.ClientId, named));
     }
 
     /// <summary>Socket died — kill the cursor now instead of letting it

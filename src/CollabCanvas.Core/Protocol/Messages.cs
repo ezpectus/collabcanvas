@@ -50,7 +50,10 @@ public sealed record PresenceUpdate(
     string ClientId,
     JsonElement Cursor,
     string[] Selection,
-    string Color);
+    string Color,
+    // Server-owned: the hub overwrites this with the resolved login —
+    // a self-claimed name would be trivially spoofable.
+    string? Name = null);
 
 /// <summary>server → room: someone's presence changed.</summary>
 public sealed record PresenceBroadcast(string ClientId, PresenceUpdate Update);

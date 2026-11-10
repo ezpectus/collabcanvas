@@ -27,9 +27,10 @@ const ok = (name, cond, extra = '') => {
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
-function client(name) {
+function client(name, token) {
   const conn = new signalR.HubConnectionBuilder()
-    .withUrl(`${API}/hubs/document`)
+    .withUrl(`${API}/hubs/document`,
+      token ? { accessTokenFactory: () => token } : {})
     .withAutomaticReconnect([0, 0, 0]) // we drive rejoin manually
     .build()
   const c = {
@@ -41,6 +42,8 @@ function client(name) {
   }
   conn.on('op', (op) => c.ops.push(op))
   conn.on('presence', (b) => c.presence.push(b))
+  conn.onclose((e) =>
+    console.log(`dbg ${name} closed`, e ? String(e).slice(0, 90) : 'clean'))
   conn.on('presence-state', (s) => { c.presenceState = s })
   conn.on('presence-left', (l) => c.presence.push({ left: l }))
   c.submit = (type, payload) =>
@@ -169,6 +172,45 @@ ok('reconnect: tail fills the gap',
 await B.conn.stop()
 await C.conn.stop()
 await A.conn.stop()
+
+// --- T-26 stage 1: auth + server-owned presence name ------------------------------
+const botLogin = `bot_${Date.now().toString(36)}`
+const authPost = (path, body) => fetch(`${API}/auth/${path}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body) })
+const reg = await authPost('register', { login: botLogin, password: 'secretpw' })
+ok('auth: register 200', reg.status === 200, `status=${reg.status}`)
+ok('auth: duplicate register 409',
+  (await authPost('register', { login: botLogin, password: 'secretpw' }))
+    .status === 409)
+const { token } = await reg.json()
+ok('auth: login 200 + token',
+  (await authPost('login', { login: botLogin, password: 'secretpw' }))
+    .status === 200)
+ok('auth: wrong password 401 (no enumeration)',
+  (await authPost('login', { login: botLogin, password: 'nope123' }))
+    .status === 401)
+ok('auth: me resolves Bearer token',
+  (await fetch(`${API}/auth/me`,
+    { headers: { Authorization: `Bearer ${token}` } })).status === 200)
+ok('auth: me rejects bad token',
+  (await fetch(`${API}/auth/me`,
+    { headers: { Authorization: 'Bearer forged' } })).status === 401)
+
+// Presence name is server-owned: the hub stamps the resolved login,
+// a client claiming a name gets ignored/overwritten. A fresh watcher
+// joins — A/B/C were already stopped by the reconnect test.
+const U = client(botLogin, token)
+const W = client('bot-watcher')
+await U.start(); await W.start(); await U.join(0); await W.join(0)
+await U.conn.invoke('Presence', { docId: DOC, clientId: botLogin,
+  cursor: { x: 1, y: 1 }, selection: [], color: '#fff', name: 'hacker' })
+const seenU = await waitFor(() =>
+  W.presence.find(p => p.clientId === botLogin), 5000)
+ok('auth: presence name = server login, not claimed',
+  seenU?.update?.name === botLogin,
+  `seen=${JSON.stringify(seenU?.update ?? null)}`)
+await U.conn.stop(); await W.conn.stop()
 
 // --- T-24/T-32: journal tail endpoint + doc delisting ----------------------------------
 const tailOps = await (await fetch(`${API}/ops?doc=${DOC}&n=5`)).json()
