@@ -8,6 +8,14 @@ Engine). Закрытые таски — `docs/done-log.md`.
 
 ---
 
+## 2026-11-09 — T-16 WIP + план на утро [D+docs]
+
+- `web/src/editor.ts` — HANDLE_DIRS (8 шт), `handlePoints`, дельта
+  в осях объекта, якорь противоположной стороны, aspect-lock
+- `web/src/renderer.ts` — отрисовка всех 8 хендлов
+- `web/src/App.tsx` — getHandles в Renderer, shift → mouseMove
+- tasks T-16 → `review` (live-проверка отложена на утро)
+
 ## 2026-11-09 — T-15 + e2e-бот + validator-fix [D]
 
 - `web/src/App.tsx` — TextEditor overlay (dblclick/click-place →
