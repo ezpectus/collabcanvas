@@ -372,6 +372,15 @@ export default function App() {
         const json = editor().copyJson()
         if (json) void navigator.clipboard?.writeText(json).catch(() => {})
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+        // Cut = copy + delete. key('Delete') rides the same
+        // compensating-op undo path as the Delete key.
+        const json = editor().copyJson()
+        if (json) {
+          void navigator.clipboard?.writeText(json).catch(() => {})
+          editor().key('Delete')
+        }
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v')
         void navigator.clipboard?.readText()
           .then((s) => editor().pasteJson(s, lastPos.current))
@@ -583,7 +592,7 @@ export default function App() {
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
               ['top handle / shift+BR', 'rotate · shift=15°'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],
-              ['ctrl+d', 'duplicate'], ['ctrl+c/v', 'copy / paste'],
+              ['ctrl+d', 'duplicate'], ['ctrl+c/x/v', 'copy/cut/paste'],
               ['ctrl+shift+l', 'lock/unlock'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
