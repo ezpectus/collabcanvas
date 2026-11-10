@@ -73,7 +73,11 @@ function Inspector({ editor, model }: {
     ? [['x1', num(o.props, 'x1')], ['y1', num(o.props, 'y1')],
        ['x2', num(o.props, 'x2')], ['y2', num(o.props, 'y2')],
        ['lineWidth', num(o.props, 'lineWidth', 2)]]
-    : o.props['x'] === undefined ? []
+    : o.props['x'] === undefined
+    // Path: points array has no scalar input, but lineWidth/opacity
+    // do — show those rather than hiding the panel entirely.
+    ? (o.kind === 'path'
+        ? [['lineWidth', num(o.props, 'lineWidth', 2)]] : [])
     : [['x', num(o.props, 'x')], ['y', num(o.props, 'y')],
        ['w', num(o.props, 'w', 1)], ['h', num(o.props, 'h', 1)],
        ['rot', num(o.props, 'rot')]]
@@ -207,6 +211,7 @@ export default function App() {
   // canvas clicking alone can't locate things; z-sorted list can.
   const [showLayers, setShowLayers] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [paintMode, setPaintMode] = useState<'fill' | 'stroke'>('fill')
   const pickFromLayers = useCallback((id: string) => {
     const ed = editor()
     ed.selected.clear(); ed.selected.add(id)
@@ -356,7 +361,13 @@ export default function App() {
         ))}
         <input type="color" className="swatch" title="brush color"
           defaultValue="#3d5af1"
-          onChange={(e) => editor().applyColor(e.target.value)} />
+          onChange={(e) => editor().applyColor(e.target.value,
+            paintMode === 'stroke')} />
+        <button className={paintMode === 'stroke' ? 'tool active' : 'tool'}
+          title="paint target: fill or stroke outline"
+          onClick={() => setPaintMode(
+            paintMode === 'stroke' ? 'fill' : 'stroke')}>
+          {paintMode}</button>
         <button onClick={() => {
           // T-22: export — the canvas is already a bitmap; toDataURL
           // is the whole job. Remote cursors/handles are frame

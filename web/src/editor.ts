@@ -166,13 +166,14 @@ export class Editor {
 
   /** T-22: repaint the selection with the current brush. Stroke for
    *  line/path, fill otherwise — matches what the renderer reads. */
-  applyColor(c: string): void {
+  applyColor(c: string, strokeMode = false): void {
     this.color = c
     const inv: WireOp[] = [], fwd: WireOp[] = []
     for (const id of this.mutable()) {
       const o = this.find(id)
       if (!o) continue
-      const key = (o.kind === 'line' || o.kind === 'path') ? 'stroke' : 'fill'
+      const key = strokeMode ? 'stroke'
+        : (o.kind === 'line' || o.kind === 'path') ? 'stroke' : 'fill'
       inv.push({ type: 'Patch', payload: { id, props: { [key]: o.props[key] ?? null } } })
       fwd.push({ type: 'Patch', payload: { id, props: { [key]: c } } })
     }
