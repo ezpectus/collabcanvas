@@ -165,5 +165,22 @@ export function hitsStroke(o: CanvasObject, x: number, y: number,
   })
 }
 
+/** T-29b: point inside a rotated quad (quadOf order TL,TR,BR,BL —
+ *  same-sign cross products = inside). AABB of a 45°-rotated rect
+ *  claims its empty corners; this doesn't. */
+export function inQuad(q: { x: number; y: number }[],
+  x: number, y: number): boolean {
+  let sign = 0
+  for (let i = 0; i < 4; i++) {
+    const a = q[i]!, b = q[(i + 1) % 4]!
+    const c = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)
+    if (c === 0) continue
+    const s = c > 0 ? 1 : -1
+    if (sign === 0) sign = s
+    else if (s !== sign) return false
+  }
+  return true
+}
+
 export const contains = (b: BBox, x: number, y: number): boolean =>
   x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1

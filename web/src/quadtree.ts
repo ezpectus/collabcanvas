@@ -9,7 +9,8 @@
 // and rebuild-on-change is provably correct.
 
 import type { CanvasObject, DocModel } from './model'
-import { boundsOf, contains, hitsStroke, intersects, type BBox } from './geometry'
+import { boundsOf, contains, hitsStroke, inQuad, intersects, num,
+  quadOf, type BBox } from './geometry'
 
 export class QuadTree {
   private readonly items: { id: string; b: BBox }[] = []
@@ -114,7 +115,11 @@ export class SceneIndex {
         if (o.kind === 'line' || o.kind === 'path')
           return hitsStroke(o, x, y, pad)
         const b = boundsOf(o)
-        return b && contains(b, x, y)
+        if (!b) return false
+        // Rotated shapes: test the real quad, not the fat AABB.
+        const rot = num(o.props, 'rot')
+        if (rot) return inQuad(quadOf(b, rot), x, y)
+        return contains(b, x, y)
       })
       .sort((a, b) => (a.z === b.z ? (a.id < b.id ? 1 : -1) : a.z < b.z ? 1 : -1))
     return hit[0] ?? null
