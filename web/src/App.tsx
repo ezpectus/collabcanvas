@@ -63,6 +63,47 @@ function Inspector({ editor, model }: {
   editor: Editor; model: DocModel
 }) {
   const sel = editor.selected
+  // T-40: multi-select shows the union box — x/y inputs translate the
+  // whole group numerically (same op path as arrow-nudge).
+  if (sel.size > 1) {
+    let u: { x0: number; y0: number; x1: number; y1: number } | null = null
+    for (const sid of sel) {
+      const so = model.objects().find((x) => x.id === sid)
+      const b = so && boundsOf(so)
+      if (b) u = u ? { x0: Math.min(u.x0, b.x0), y0: Math.min(u.y0, b.y0),
+                       x1: Math.max(u.x1, b.x1), y1: Math.max(u.y1, b.y1) }
+                   : b
+    }
+    if (!u) return null
+    const box = u
+    return (
+      <aside className="history-panel inspector-panel">
+        <b>{sel.size} objects · union</b>
+        {([['x', box.x0], ['y', box.y0]] as [string, number][]).map(([k, v]) => (
+          <div key={k} className="hist-row">
+            <span className="hist-seq">{k}</span>
+            <input className="insp-input" type="number" step="1"
+              key={`${k}:${v}`}
+              defaultValue={Math.round(v * 10) / 10}
+              onBlur={(e) => {
+                const nv = parseFloat(e.target.value)
+                if (!Number.isFinite(nv)) return
+                if (k === 'x') editor.translateBy(nv - box.x0, 0)
+                else editor.translateBy(0, nv - box.y0)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                e.stopPropagation()
+              }} />
+          </div>
+        ))}
+        <div className="hist-row"><span className="hist-seq">w·h</span>
+          <span className="hist-who">
+            {Math.round(box.x1 - box.x0)} × {Math.round(box.y1 - box.y0)}
+          </span></div>
+      </aside>
+    )
+  }
   if (sel.size !== 1) return null
   const id = [...sel][0]!
   const o = model.objects().find((x) => x.id === id)

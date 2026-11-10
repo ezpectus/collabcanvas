@@ -763,26 +763,32 @@ export class Editor {
       }
     }
     const a = arrow[key]
-    if (a && this.selected.size) {
-      const dx = a[0] * (shift ? 10 : 1), dy = a[1] * (shift ? 10 : 1)
-      const inv: WireOp[] = [], fwd: WireOp[] = []
-      for (const oid of this.mutable()) {
-        const o = this.find(oid)
-        if (!o) continue
-        const flush: Record<string, unknown> = {}
-        for (const k of ['x', 'y', 'x1', 'y1', 'x2', 'y2'])
-          if (o.props[k] !== undefined)
-            flush[k] = num(o.props, k) + (k[0] === 'x' ? dx : dy)
-        if (o.props['points'] !== undefined)
-          flush['points'] = (o.props['points'] as { x: number; y: number }[])
-            .map((p) => ({ x: p.x + dx, y: p.y + dy }))
-        inv.push({ type: 'Patch', payload: { id: oid, props: { ...o.props } } })
-        fwd.push({ type: 'Patch', payload: { id: oid, props: flush } })
-        this.session.submit('Patch', { id: oid, props: flush })
-      }
-      if (fwd.length) this.recordUndo(inv, fwd)
-      this.redraw()
+    if (a && this.selected.size)
+      this.translateBy(a[0] * (shift ? 10 : 1), a[1] * (shift ? 10 : 1))
+  }
+
+  /** T-40: translate the mutable selection by (dx,dy) — shared by the
+   *  arrow-nudge and the multi-select inspector's x/y inputs. One
+   *  undo entry covers the whole group move. */
+  translateBy(dx: number, dy: number): void {
+    const inv: WireOp[] = [], fwd: WireOp[] = []
+    for (const oid of this.mutable()) {
+      const o = this.find(oid)
+      if (!o) continue
+      const flush: Record<string, unknown> = {}
+      for (const k of ['x', 'y', 'x1', 'y1', 'x2', 'y2'])
+        if (o.props[k] !== undefined)
+          flush[k] = num(o.props, k) + (k[0] === 'x' ? dx : dy)
+      if (o.props['points'] !== undefined)
+        flush['points'] = (o.props['points'] as { x: number; y: number }[])
+          .map((p) => ({ x: p.x + dx, y: p.y + dy }))
+      if (!Object.keys(flush).length) continue
+      inv.push({ type: 'Patch', payload: { id: oid, props: { ...o.props } } })
+      fwd.push({ type: 'Patch', payload: { id: oid, props: flush } })
+      this.session.submit('Patch', { id: oid, props: flush })
     }
+    if (fwd.length) this.recordUndo(inv, fwd)
+    this.redraw()
   }
 
   /** Ctrl+D: clone each selected object at +20/+20, topmost z. */
