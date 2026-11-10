@@ -223,6 +223,39 @@ app.MapGet("/ops", async (
 // T-32: remove a doc from the discovery list. Journal/snapshot are
 // NOT deleted (no destroy semantics without auth) — this only stops
 // advertising it; re-joining re-adds it. Reversible by design.
+// T-27: document metadata (name). First real meta model — stream
+// keys alone were never it. doc:{id}:meta hash {name}. Rename is
+// owner/admin only (needs the membership layer — that's why this
+// ticket waited for T-26).
+app.MapGet("/docs/{id}/meta", async (
+    string id, IConnectionMultiplexer redis,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users, HttpRequest req) =>
+{
+    // Meta read = same rule as ops: owned → members only.
+    if (await CallerRole(members, users, req, id) is null)
+        return Results.StatusCode(403);
+    var name = await redis.GetDatabase().HashGetAsync($"doc:{id}:meta", "name");
+    return Results.Ok(new { id, name = name.IsNullOrEmpty ? null : name.ToString() });
+});
+
+app.MapPatch("/docs/{id}", async (
+    string id, IConnectionMultiplexer redis,
+    CollabCanvas.Api.Auth.MembershipStore members,
+    CollabCanvas.Api.Auth.UserStore users,
+    System.Text.Json.JsonElement body, HttpRequest req) =>
+{
+    if (await members.IsOwnedAsync(id) &&
+        (await CallerRole(members, users, req, id) is not { } cr ||
+         cr < CollabCanvas.Api.Auth.RoomRole.Admin))
+        return Results.StatusCode(403);
+    var name = body.TryGetProperty("name", out var n) ? n.GetString() : null;
+    if (name is null || name.Trim().Length is 0 or > 64)
+        return Results.BadRequest("name 1..64 chars");
+    await redis.GetDatabase().HashSetAsync($"doc:{id}:meta", "name", name.Trim());
+    return Results.NoContent();
+});
+
 app.MapDelete("/docs/{id}", async (
     IConnectionMultiplexer redis,
     CollabCanvas.Api.Auth.MembershipStore members,

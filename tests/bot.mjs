@@ -305,6 +305,19 @@ ok('authz: /ops denied to stranger',
 ok('authz: /ops readable by member',
   (await authed(`/ops?doc=${OWN}&n=5`, reg3.token)).status === 200)
 
+// T-27: rename via PATCH /docs/{id} — admin+ only, meta readable
+// by any member.
+ok('meta: rename denied to editor member', (await authed(
+  `/docs/${OWN}`, reg2.token, { method: 'PATCH',
+    body: JSON.stringify({ name: 'stolen' }) })).status === 403)
+ok('meta: owner renames', (await authed(`/docs/${OWN}`, token,
+  { method: 'PATCH', body: JSON.stringify({ name: 'board one' }) }))
+    .status === 204)
+const meta = await (await authed(`/docs/${OWN}/meta`, reg3.token)).json()
+ok('meta: name readable by member', meta.name === 'board one', meta.name)
+ok('meta: name hidden from stranger',
+  (await fetch(`${API}/docs/${OWN}/meta`)).status === 403)
+
 // Delist: stranger 403, owner 204 (reversible delist, journal lives).
 ok('authz: DELETE /docs denied to stranger',
   (await fetch(`${API}/docs/${OWN}`, { method: 'DELETE' }))

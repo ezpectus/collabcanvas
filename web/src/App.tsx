@@ -321,6 +321,21 @@ export default function App() {
       res.status === 400 ? 'no such login / bad role' : `add failed: ${res.status}`)
     if (res.ok) void loadMembers()
   }, [authedFetch, docId, loadMembers])
+  // T-27: doc name lives in doc:{id}:meta — rename is admin+.
+  const [docName, setDocName] = useState<string | null>(null)
+  const loadMeta = useCallback(async () => {
+    try {
+      const res = await authedFetch(`/docs/${encodeURIComponent(docId)}/meta`)
+      if (res.ok) setDocName(
+        (await res.json() as { name: string | null }).name)
+    } catch { /* meta is cosmetic — a 403 just means no admin rights */ }
+  }, [authedFetch, docId])
+  const rename = useCallback(async (name: string) => {
+    const res = await authedFetch(`/docs/${encodeURIComponent(docId)}`,
+      { method: 'PATCH', body: JSON.stringify({ name }) })
+    setShareErr(res.ok ? 'renamed' : `rename failed: ${res.status}`)
+    if (res.ok) setDocName(name)
+  }, [authedFetch, docId])
   const doAuth = useCallback(async (
     path: 'login' | 'register', l: string, p: string) => {
     try {
@@ -391,8 +406,8 @@ export default function App() {
 
   useEffect(() => () => { void sessionRef.current?.stop() }, [])
   useEffect(() => {
-    if (showShare && canManage) void loadMembers()
-  }, [showShare, canManage, loadMembers])
+    if (showShare && canManage) { void loadMembers(); void loadMeta() }
+  }, [showShare, canManage, loadMembers, loadMeta])
 
   // Tool hotkeys + Delete.
   useEffect(() => {
@@ -687,7 +702,14 @@ export default function App() {
         )}
         {showShare && canManage && state === 'joined' && (
           <aside className="history-panel">
-            <b>Share</b>
+            <b>Share{docName ? ` · ${docName}` : ''}</b>
+            <div className="hist-row" style={{ gap: 4 }}>
+              <input className="insp-input" id="doc-rename"
+                placeholder={docName ?? 'doc name'} style={{ width: 110 }} />
+              <button className="tool" onClick={() => void rename(
+                (document.getElementById('doc-rename') as HTMLInputElement).value)}>
+                rename</button>
+            </div>
             <button className="tool" onClick={() => void copyLink('viewer')}>
               copy view link</button>
             <button className="tool" onClick={() => void copyLink('editor')}>
