@@ -368,6 +368,14 @@ export default function App() {
         rendererRef.current.markDirty()
       }
       if (e.key === '?') setShowHelp((h) => !h) // undiscoverable otherwise
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        const json = editor().copyJson()
+        if (json) void navigator.clipboard?.writeText(json).catch(() => {})
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v')
+        void navigator.clipboard?.readText()
+          .then((s) => editor().pasteJson(s, lastPos.current))
+          .catch(() => {}) // clipboard denied or not ours — no-op
       if (e.ctrlKey || e.metaKey) e.preventDefault() // Ctrl+D is ours, not bookmark
       editor().key(e.key, e.ctrlKey || e.metaKey, e.shiftKey, e.altKey)
     }
@@ -575,7 +583,8 @@ export default function App() {
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
               ['top handle / shift+BR', 'rotate · shift=15°'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],
-              ['ctrl+d', 'duplicate'], ['ctrl+shift+l', 'lock/unlock'],
+              ['ctrl+d', 'duplicate'], ['ctrl+c/v', 'copy / paste'],
+              ['ctrl+shift+l', 'lock/unlock'],
               ['ctrl+z/y', 'undo / redo'], ['del', 'delete'],
               ['[ ]', 'back / front'], ['ctrl+[ ]', 'step layer'],
               ['ctrl+a / esc', 'all / deselect'], ['g', 'grid+snap'],

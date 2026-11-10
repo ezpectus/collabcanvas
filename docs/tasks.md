@@ -658,3 +658,11 @@ w·h read-only (scale-ввод = отдельный шаг, честно про�
 row → before). Undo-aware Reorder, locked-dragged гейтится в
 reorderTo. Край: визуального drop-индикатора нет — drop-позиция
 видна по результату, честный MVP.
+
+## T-42 · Copy/paste · `review` · S
+Ctrl+C пишет JSON выделения (kind=cc-objects), Ctrl+V читает и
+создаёт у позиции курсора (единый union-якорь — группа не слипается
+в точку). Чужой буфер игнорится молча, кап 200 объектов на вставку,
+empty-selection copy не затирает буфер. Locked не копируется
+(mutable()); копия несёт locked-проп — честно. Край: paste до
+первого mouseMove летит в world (0,0).

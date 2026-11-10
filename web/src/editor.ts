@@ -792,6 +792,62 @@ export class Editor {
   }
 
   /** Ctrl+D: clone each selected object at +20/+20, topmost z. */
+  /** T-42: selection → clipboard JSON. Returns null when nothing
+   *  (mutable) is selected so Ctrl+C doesn't clobber the user's
+   *  real clipboard contents. */
+  copyJson(): string | null {
+    const objs = this.mutable()
+      .map((id) => this.find(id)).filter((o) => !!o)
+    if (!objs.length) return null
+    return JSON.stringify({ kind: 'cc-objects',
+      objs: objs.map((o) => ({ kind: o!.kind, props: o!.props })) })
+  }
+
+  /** T-42: clipboard JSON → new objects offset at the paste point.
+   *  Foreign clipboard contents are ignored silently (try/catch +
+   *  kind tag). Paste bomb: capped at 200 objects per paste. */
+  pasteJson(s: string, at?: { x: number; y: number }): void {
+    let d: { kind?: string; objs?: { kind: string; props: Record<string, unknown> }[] }
+    try { d = JSON.parse(s) } catch { return }
+    if (d?.kind !== 'cc-objects' || !Array.isArray(d.objs)) return
+    const inv: WireOp[] = [], fwd: WireOp[] = []
+    const created = new Set<string>()
+    // One anchor for the whole payload: min over x/x1/points so a
+    // mixed paste lands at the cursor *as a group*, not stacked.
+    let ax = Infinity, ay = Infinity
+    for (const o of d.objs) {
+      const p = o.props
+      const pts = p['points'] as { x: number; y: number }[] | undefined
+      ax = Math.min(ax, p['x'] !== undefined ? num(p, 'x')
+        : p['x1'] !== undefined ? Math.min(num(p, 'x1'), num(p, 'x2'))
+        : pts?.[0]?.x ?? Infinity)
+      ay = Math.min(ay, p['y'] !== undefined ? num(p, 'y')
+        : p['y1'] !== undefined ? Math.min(num(p, 'y1'), num(p, 'y2'))
+        : pts?.[0]?.y ?? Infinity)
+    }
+    const dx = at && ax < Infinity ? at.x - ax : 24
+    const dy = at && ay < Infinity ? at.y - ay : 24
+    for (const o of d.objs.slice(0, 200)) {
+      const nid = this.id(), cz = this.topZ()
+      const props = { ...o.props }
+      for (const k of ['x', 'x1', 'x2'])
+        if (props[k] !== undefined) props[k] = num(props, k) + dx
+      for (const k of ['y', 'y1', 'y2'])
+        if (props[k] !== undefined) props[k] = num(props, k) + dy
+      if (props['points'] !== undefined)
+        props['points'] = (props['points'] as { x: number; y: number }[])
+          .map((p) => ({ x: p.x + dx, y: p.y + dy }))
+      this.session.submit('Create', { id: nid, kind: o.kind, z: cz, props })
+      fwd.push({ type: 'Create', payload: { id: nid, kind: o.kind, z: cz, props } })
+      inv.push({ type: 'Delete', payload: { id: nid } })
+      created.add(nid)
+    }
+    if (fwd.length) this.recordUndo(inv, fwd)
+    this.selected.clear()
+    for (const id of created) this.selected.add(id)
+    this.redraw()
+  }
+
   private duplicate(): void {
     const created = new Set<string>()
     const inv: WireOp[] = [], fwd: WireOp[] = []
