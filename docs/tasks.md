@@ -651,3 +651,10 @@ Inspector-поле для всех скалярных типов, шаг 0.05, �
 Union-box панель при sel>=2: x/y-инпуты сдвигают всю группу
 (общий Editor.translateBy с arrow-nudge — одна undo-запись),
 w·h read-only (scale-ввод = отдельный шаг, честно пропущен).
+
+## T-41 · Layers drag-reorder · `review` · S
+Строки layers-панели draggable; drop ставит объект на fractional-z
+под целевой строкой (список z-desc → between(next.z, row.z), last
+row → before). Undo-aware Reorder, locked-dragged гейтится в
+reorderTo. Край: визуального drop-индикатора нет — drop-позиция
+видна по результату, честный MVP.
