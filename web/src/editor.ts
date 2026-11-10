@@ -197,9 +197,15 @@ export class Editor {
     const q = quadOf(b, num(o.props, 'rot'))
     const mid = (a: { x: number; y: number }, c: { x: number; y: number }) =>
       ({ x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 })
+    // T-36: 8 resize handles + a 9th above top-center — the discoverable
+    // rotate handle (Shift+BR still works; the extra point rides the
+    // object's own rotation so it stays "above" the shape).
+    const top = mid(q[0]!, q[1]!)
+    const rotRad = (num(o.props, 'rot') * Math.PI) / 180
     return [q[0]!, mid(q[0]!, q[1]!), q[1]!, mid(q[1]!, q[2]!),
-            q[2]!, mid(q[2]!, q[3]!), q[3]!, mid(q[3]!, q[0]!)]
-  }
+            q[2]!, mid(q[2]!, q[3]!), q[3]!, mid(q[3]!, q[0]!),
+            { x: top.x - Math.sin(rotRad) * 14,   // local-up rotated
+              y: top.y - Math.cos(rotRad) * 14 }]
 
   mouseDown(wx: number, wy: number, scale = 1, shift = false): void {
     wx = this.grid(wx); wy = this.grid(wy)
@@ -214,7 +220,7 @@ export class Editor {
         mode: this.selected.size >= 2
             ? (shift ? 'grotate' : 'gresize')
           : o.kind === 'line' ? 'point'
-          : shift && hi === 4 ? 'rotate' : 'resize',
+          : hi === 8 || (shift && hi === 4) ? 'rotate' : 'resize',
         startX: wx, startY: wy,
         orig: new Map([...this.selected]
           .map((id) => [id, { ...this.find(id)!.props }])),
@@ -230,7 +236,7 @@ export class Editor {
               }
               return u ? { x: (u.x0 + u.x1) / 2, y: (u.y0 + u.y1) / 2 } : null
             })()
-          : shift && hi === 4
+          : hi === 8 || (shift && hi === 4)
           ? { x: (boundsOf(o)!.x0 + boundsOf(o)!.x1) / 2,
               y: (boundsOf(o)!.y0 + boundsOf(o)!.y1) / 2 }
           : null,
