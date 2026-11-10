@@ -280,6 +280,12 @@ export default function App() {
               void navigator.clipboard.writeText(
                 `${location.origin}${location.pathname}?doc=${encodeURIComponent(docId)}`)
             }>share</button>
+            <button className="tool" title="remove this doc from the shared list"
+              onClick={() => void (async () => {
+                // T-32: delist only — journal survives; rejoining re-adds.
+                await fetch(`/docs/${encodeURIComponent(docId)}`, { method: 'DELETE' })
+                void refreshDocs()
+              })()}>unlist</button>
           </>
         )}
         {TOOLS.map((t) => (

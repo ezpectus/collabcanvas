@@ -73,6 +73,21 @@ app.MapGet("/ops", (CollabCanvas.Core.Journal.IOpJournalFactory journals,
     return Results.Ok(ops);
 });
 
+// T-32: remove a doc from the discovery list. Journal/snapshot are
+// NOT deleted (no destroy semantics without auth) — this only stops
+// advertising it; re-joining re-adds it. Reversible by design.
+app.MapDelete("/docs/{id}", async (IConnectionMultiplexer redis, string id) =>
+{
+    if (string.IsNullOrWhiteSpace(id) || id.Length > 64)
+        return Results.BadRequest("bad id");
+    try
+    {
+        await redis.GetDatabase().SetRemoveAsync("docs", id);
+        return Results.NoContent();
+    }
+    catch (RedisException) { return Results.Ok(); }
+});
+
 app.MapHub<DocumentHub>("/hubs/document");
 
 app.Run();

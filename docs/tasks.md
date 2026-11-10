@@ -588,3 +588,9 @@ Bề mặt "tìm object" — 10k object thì click không định vị nổi.
 Panel z-sorted (top đầu), click row → select + zoom tới.
 Kraï: list là snapshot lúc render — không subscribe model, op mới
 đến khi panel mở sẽ không tự refresh (mở lại là đủ).
+
+## T-32 · Doc delisting · `review` · XS
+DELETE /docs/{id} removes id from the discovery Set only —
+journal/snapshot untouched, re-join re-adds (reversible, no destroy
+semantics without auth). Client: `unlist` button next to the picker.
+Verified live: DELETE -> 204, id gone from /docs.
