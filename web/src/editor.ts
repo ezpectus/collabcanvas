@@ -7,7 +7,8 @@
 // throttled 80ms, final flush on mouseup. Deltas apply to props as of
 // mouseDown — no float drift, no mid-drag hijack by foreign patches.
 
-import { boundsOf, computeResize, num, quadOf, type BBox } from './geometry'
+import { boundsOf, computeResize, num, quadOf, simplifyPoints,
+  type BBox } from './geometry'
 import type { CanvasObject } from './model'
 import { FractionalIndex } from './fractionalIndex'
 import { SceneIndex } from './quadtree'
@@ -320,7 +321,11 @@ export class Editor {
         this.selected.delete(oid)
       }
     } else if (d.localCreate) {
-      const props = d.orig.get(d.localCreate.id)!
+      // T-21: simplify before the wire — raw mouse resolution is
+      // noise; ~1wu tolerance keeps the shape, drops the payload.
+      const origProps = d.orig.get(d.localCreate.id)!
+      const pts = origProps['points'] as { x: number; y: number }[]
+      const props = { ...origProps, points: simplifyPoints(pts, 1) }
       this.session.submit('Create', {
         id: d.localCreate.id, kind: 'path', z: d.localCreate.z, props })
       this.recordUndo(

@@ -109,6 +109,33 @@ export function quadOf(b: BBox, rotDeg: number): { x: number; y: number }[] {
     }))
 }
 
+/** T-21: Ramer–Douglas–Peucker polyline simplification. Drops
+ *  points within `eps` of the chord — a freehand stroke keeps its
+ *  shape at a fraction of the payload (long paths were the biggest
+ *  op bodies on the wire). First/last points always survive. */
+export function simplifyPoints(
+  pts: { x: number; y: number }[], eps: number,
+): { x: number; y: number }[] {
+  if (pts.length <= 2) return pts
+  const a = pts[0]!, b = pts[pts.length - 1]!
+  let maxD = 0, maxI = 0
+  const dx = b.x - a.x, dy = b.y - a.y
+  const len2 = dx * dx + dy * dy
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i]!
+    // Perpendicular distance (projected fallback for degenerate chords).
+    const d = len2 === 0
+      ? Math.hypot(p.x - a.x, p.y - a.y)
+      : Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / Math.sqrt(len2)
+    if (d > maxD) { maxD = d; maxI = i }
+  }
+  if (maxD <= eps) return [a, b]
+  return [
+    ...simplifyPoints(pts.slice(0, maxI + 1), eps).slice(0, -1),
+    ...simplifyPoints(pts.slice(maxI), eps),
+  ]
+}
+
 export const intersects = (a: BBox, b: BBox): boolean =>
   !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1)
 
