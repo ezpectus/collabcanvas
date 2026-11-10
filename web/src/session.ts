@@ -36,6 +36,10 @@ export class Session {
   onChange: (() => void) | null = null
   onPresence: (() => void) | null = null
 
+  /** T-26: server-resolved doc role — set on every (re)join. UI may
+      hide tools on 'viewer'; enforcement is server-side, always. */
+  role: string | null = null
+
   async join(docId: string, clientId: string, url = '/hubs/document',
     token?: string | null): Promise<void> {
     this.docId = docId
@@ -83,6 +87,7 @@ export class Session {
       clientId: this.clientId,
       lastSeq,
     })
+    this.role = res.role ?? null
     if (res.snapshot)
       this.model.restore(res.snapshot as SnapshotObject[], res.snapshotSeq)
     for (const op of res.ops) this.model.apply(op)

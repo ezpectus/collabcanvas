@@ -16,6 +16,9 @@ export interface JoinResult {
   snapshot: unknown | null
   snapshotSeq: number
   ops: OpBroadcast[]
+  /** Server-resolved doc role (T-26): 'owner'|'admin'|'editor'|'viewer'.
+      Cosmetic only — enforcement lives on the server. */
+  role?: string
 }
 
 export interface OpBroadcast {

@@ -282,6 +282,8 @@ export default function App() {
   const [login, setLogin] = useState(
     () => localStorage.getItem('cc_login'))
   const [authErr, setAuthErr] = useState('')
+  // T-26 stage 2: server-resolved role on the joined doc (cosmetic).
+  const [role, setRole] = useState<string | null>(null)
   const doAuth = useCallback(async (
     path: 'login' | 'register', l: string, p: string) => {
     try {
@@ -330,6 +332,7 @@ export default function App() {
       s.onChange = markDirty
       s.onPresence = markDirty
       await s.join(docId, clientId.current, '/hubs/document', token)
+      setRole(s.role)
       setState('joined')
       markDirty()
       void refreshDocs()
@@ -451,7 +454,8 @@ export default function App() {
         </button>
         {login ? (
           <>
-            <span className="pill" title="signed in">👤 {login}</span>
+            <span className="pill" title="signed in">
+              👤 {login}{role ? ` · ${role}` : ''}</span>
             <button className="tool" onClick={() => void logout()}>
               logout</button>
           </>
