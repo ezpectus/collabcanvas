@@ -44,6 +44,8 @@ export class Renderer {
     private readonly getMarquee: () => BBox | null,
     private readonly getHandles: () => { x: number; y: number }[] = () => [],
     private readonly getGuides: () => { axis: 'v' | 'h'; pos: number }[] = () => [],
+    /** Group isolation: non-members draw dimmed while set. */
+    private readonly getIsolation: () => string | null = () => null,
   ) {}
 
   markDirty(): void { this.dirty = true }
@@ -161,7 +163,10 @@ export class Renderer {
 
     // Quadtree culling: pay per drawn object, not per object in doc.
     const objects = this.index.visibleIn(this.model, view)
-    for (const o of objects) drawObject(ctx, o, (s) => this.imgFor(s))
+    const iso = this.getIsolation()
+    for (const o of objects)
+      drawObject(ctx, o, (s) => this.imgFor(s),
+        iso !== null && o.props['group'] !== iso)
     const drawn = objects.length
 
     for (const quad of this.getSelection()) this.drawSelection(ctx, quad)
@@ -322,10 +327,12 @@ export class Renderer {
 }
 
 function drawObject(ctx: CanvasRenderingContext2D, o: CanvasObject,
-  imgFor: (src: string) => HTMLImageElement | 'err' | null = () => 'err'): void {
+  imgFor: (src: string) => HTMLImageElement | 'err' | null = () => 'err',
+  dim = false): void {
   const p = o.props
   // T-39: per-object opacity — plain prop, LWW-merged for free.
-  const alpha = num(p, 'opacity', 1)
+  // dim = isolation non-member: opacity multiplies, not overrides.
+  const alpha = num(p, 'opacity', 1) * (dim ? 0.22 : 1)
   if (alpha !== 1) ctx.globalAlpha = alpha
   const fill = str(p, 'fill', '#8892b0')
   const stroke = str(p, 'stroke', '')

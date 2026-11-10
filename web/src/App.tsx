@@ -220,6 +220,7 @@ export default function App() {
       () => editorRef.current?.marqueeRect() ?? null,
       () => editorRef.current?.handlePoints() ?? [],
       () => editorRef.current?.guides ?? [],
+      () => editorRef.current?.isolated ?? null,
     )
     rendererRef.current = r
     r.blobUrl = (id) => session().blobUrl(id)
@@ -954,6 +955,7 @@ export default function App() {
             {([
               ['v/r/e/l/t/p', 'tools'], ['dblclick text', 'edit'],
               ['ctrl+g', 'group'], ['ctrl+shift+g', 'ungroup'],
+              ['dblclick group', 'edit inside · esc/outside exits'],
               ['shift+click', 'multi-select'], ['drag marquee', 'select area'],
               ['8 handles', 'resize · shift=aspect alt=center'],
               ['top handle / shift+BR', 'rotate · shift=15°'], ['arrows', 'nudge · shift=10'], ['= -', 'font size'], ['alt+arrows / h v', 'align edges / centers'], ['alt+shift+h v', 'distribute'],

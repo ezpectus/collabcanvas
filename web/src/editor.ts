@@ -56,6 +56,10 @@ export class Editor {
   private wantEdit: string | null = null
   private drag: Drag | null = null
   private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null
+  /** Group isolation (dblclick into a tag): while set, gestures see
+      only that tag's members — Figma's "edit inside the group"
+      without ungrouping. Cleared on Esc / outside-dblclick / dissolve. */
+  isolated: string | null = null
   private lastPatch = 0
   // T-17: per-client undo as compensating ops. Each entry stores the
   // ops that REVERSE an action and the ops that redo it — undo is a
@@ -104,10 +108,41 @@ export class Editor {
     return id
   }
 
-  /** dblclick: text objects open the inline editor, others just select. */
-  dblClick(wx: number, wy: number): void {
+  /** Isolation dies with its last member (ungroup / delete / remote
+      op) — checked lazily on touch, no watcher needed. */
+  private isolationAlive(): void {
+    if (this.isolated &&
+        !this.objects().some((o) => o.props['group'] === this.isolated))
+      this.isolated = null
+  }
+
+  /** Isolation-aware pick: inside a group only its members exist
+      for gestures. A foreign object covering a member still blocks
+      the click (topmost wins) — same as Figma. */
+  private pick(wx: number, wy: number) {
+    this.isolationAlive()
     const hit = this.index.hitTest(this.session.model, wx, wy)
-    if (!hit) return
+    if (!hit) return null
+    return this.isolated && hit.props['group'] !== this.isolated
+      ? null : hit
+  }
+
+  /** dblclick: enters a group; inside it, text opens the inline
+      editor and plain members just select; empty space exits. */
+  dblClick(wx: number, wy: number): void {
+    const hit = this.pick(wx, wy)
+    if (!hit) {
+      if (this.isolated) { this.isolated = null; this.redraw() }
+      return
+    }
+    if (!this.isolated) {
+      const g = hit.props['group']
+      if (typeof g === 'string' && g) {
+        this.isolated = g
+        this.selected.clear(); this.selected.add(hit.id)
+        this.redraw(); return
+      }
+    }
     this.selected.clear()
     this.selected.add(hit.id)
     if (hit.kind === 'text') this.wantEdit = hit.id
@@ -119,6 +154,9 @@ export class Editor {
   /** T-35: objects sharing the clicked one's `group` tag (or just
       itself when ungrouped). */
   private expandGroup(hit: { id: string; props: Record<string, unknown> }): string[] {
+    // Inside isolation the whole point is editing members one by
+    // one — tag expansion would just reselect the whole group.
+    if (this.isolated) return [hit.id]
     const gid = hit.props['group']
     if (typeof gid !== 'string' || !gid) return [hit.id]
     return this.objects()
@@ -130,6 +168,9 @@ export class Editor {
       just under a click. Locked members stay out (T-38 rule:
       they don't exist for selection gestures). */
   private expandSelection(): void {
+    // Inside isolation members are individual — pulling the whole
+    // tag back in would defeat the point of entering it.
+    if (this.isolated) return
     const tags = new Set<string>()
     for (const id of this.selected) {
       const g = this.find(id)?.props['group']
@@ -337,7 +378,7 @@ export class Editor {
       return
     }
 
-    const hit = this.index.hitTest(this.session.model, wx, wy)
+    const hit = this.pick(wx, wy)
     if (hit && shift) {
       // Shift-click toggles membership — a grouped object pulls its
       // whole tag along (group = flat tag, not a transform parent).
@@ -591,6 +632,9 @@ export class Editor {
       if (d.moved) {
         for (const o of this.objects()) {
           if (o.props['locked']) continue
+          // Isolated marquee sees only the group's members.
+          if (this.isolated && o.props['group'] !== this.isolated)
+            continue
           const b = boundsOf(o)
           if (b && !(b.x1 < m.x0 || b.x0 > m.x1 || b.y1 < m.y0 || b.y0 > m.y1))
             this.selected.add(o.id)
@@ -703,12 +747,19 @@ export class Editor {
         }
         this.redraw(); return
       }
+      // Esc exits isolation before deselecting — Figma's "step out".
+      if (this.isolated) {
+        this.isolated = null
+        this.selected.clear(); this.redraw(); return
+      }
       this.selected.clear(); this.redraw(); return
     }
     // T-35: flat group tags — ctrl+g tags selection, ctrl+shift+g untags.
     // A group is just a shared `group` prop (LWW merges it for free);
     // nested groups are deliberately out (that would be a real tree).
     if (ctrl && shift && (key === 'g' || key === 'G')) {
+      // Dissolving the group dissolves the isolation with it.
+      this.isolated = null
       this.setGroup(null); return
     }
     if (ctrl && (key === 'g' || key === 'G')) {
@@ -716,10 +767,12 @@ export class Editor {
     }
     if (ctrl && (key === 'a' || key === 'A')) {
       // Ctrl+A: every unlocked object — standard select-all skips
-      // locked (Figma parity). Undo-safe (no doc mutation, just
-      // selection state).
+      // locked (Figma parity). Inside isolation, "all" = the group's
+      // members. Undo-safe (no doc mutation, just selection state).
       for (const o of this.objects())
-        if (!o.props['locked']) this.selected.add(o.id)
+        if (!o.props['locked'] &&
+            (!this.isolated || o.props['group'] === this.isolated))
+          this.selected.add(o.id)
       this.expandSelection()
       this.redraw(); return
     }
