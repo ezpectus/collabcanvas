@@ -124,3 +124,32 @@ Presence-имя = серверный логин (self-claimed перезапис
 нужен per-op пересмотр или versioned session) · /auth/login без
 throttle · токен в WS query → access-логи прокси · пароль без
 max-длины (bcrypt режет >72B молча).
+
+## Stage 2 — статус (закоммичено 875b916 + 5e242dd, в `review`)
+
+Реализовано: `doc:{id}:members` (hash login→role), `user:{login}:docs`,
+`owned:docs`. Роли owner/admin/editor/viewer вне документа —
+Patch не может отчеканить право. Owned-док = только POST /docs
+авторизованным (создатель=owner). Implicit-join unowned-дока —
+legacy-open: **first-claim отклонён**, логин не крадёт чужой
+анонимный док (осознанный компромисс: unowned-доки открыты всегда,
+owned — закрыты с момента создания).
+
+Enforce-точки: JoinDocument (HubException → invoke reject),
+SubmitOp per-op (revoke на следующем op — живой сокет не спасает,
+закрывает дыру stage-1 «logout не рвёт сокет» для членства),
+Presence gated, /docs фильтр (member∪unowned / guest=unowned),
+DELETE+/ops role-gated, members CRUD (admin: editor/viewer; owner
+нельзя отчеканить через members — 400; admin не сажает admin — 403).
+
+Бот +18 authz-чеков, живьём на compose. Поймано 2 краша на живом
+прогоне (записано в CHANGELOG): Results.Forbid() требует ASP.NET
+auth-пайплайна; TryParse на DI-типе ломает minimal-API биндинг.
+
+Открытые края stage 2 (честно): per-op check = 1-2 Redis-чтения на
+op — без кэша сознательно (кэш = окно revocation; профилировать
+на реальной нагрузке) · EffectiveRole на HubException — текст
+'forbidden' доезжает в e.message обёрнутым · guest-presence на
+owned-доке молча дропается · членство по login, не uid — rename
+аккаунта (фичи нет) потребует переноса · viewer видит курсоры
+(presence read-only по природе).

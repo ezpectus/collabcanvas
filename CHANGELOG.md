@@ -275,3 +275,8 @@ Engine). Закрытые таски — `docs/done-log.md`.
 - Записанные дыры stage 1: /docs открыт, гость=editor, logout
   не рвёт живой сокет, /auth/login без throttle, query-токен
   в логах прокси
+- T-26 stage 2: membership + роли (875b916), JoinResult.Role в
+  клиенте (5e242dd). Бот +18 authz-чеков. Краши живого прогона:
+  Results.Forbid() без auth-пайплайна → StatusCode(403);
+  MembershipStore.TryParse → ParseRole (конвенция биндинга
+  minimal-API валила стартап)

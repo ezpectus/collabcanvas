@@ -584,12 +584,23 @@ object + viewport rect; docBounds cache theo model.version. Mặc
   Presence-имя штампует сервер — self-claimed игнорируется (бот:
   шлём name:'hacker', комната видит логин). Клиент: localStorage
   cc_token, sign-in UI, курсоры с логинами.
-- **stage 2 `todo`**: membership `doc:{id}:member:{login}=role`
-  (owner/admin/editor/viewer) ВНЕ документ-props (иначе LWW-Patch =
-  самоповышение), guest-link grant'ы viewer/editor (owner/admin
-  только инвайтом), enforce на JoinDocument+SubmitOp+/docs+DELETE.
-- **stage 3 `todo`**: issue/revoke ссылок (token→role), revoke
-  гасит живой сокет (per-op перепроверка или versioned grant).
+- **stage 2 `review`** (875b916, 5e242dd): MembershipStore —
+  `doc:{id}:members` hash login→role + `user:{login}:docs` +
+  `owned:docs`. Owned-док только через POST /docs (автор-создатель =
+  owner); implicit-join unowned = legacy-open (first-claim отклонён —
+  логин не должен красть анонимные доки). Enforce: JoinDocument deny
+  (HubException), SubmitOp per-op (revoke ложится на следующий op —
+  живой сокет не спасает), Presence gated, /docs отфильтрован,
+  DELETE+/ops по роли, members-эндпоинты (admin не сажает admin/
+  owner). Бот +18 authz-чеков. Поймано 2 краша на живом прогоне:
+  Results.Forbid() тянет ASP.NET auth-пайплайн (→StatusCode 403);
+  MembershipStore.TryParse столкнулся с конвенцией биндинга
+  (→ParseRole). Край: EffectiveRole = 1-2 Redis-чтения на op —
+  без кэша намеренно (кэш = окно revocation).
+- **stage 3 `todo`**: link-grant'ы `doc:{id}:link:{token}`→
+  viewer|editor (owner/admin НЕ выдаются по ссылке), issue/revoke
+  через owner/admin, `JoinDocumentRequest.grant` пробивается в
+  EffectiveRole, revoke гасит живой сокет тем же per-op путём.
 - **stage 4 `todo`**: share-UI + viewer-mode (UI прячет кнопки,
   но enforce всегда на сервере).
 - **Дыры стадии 1, честно** (задокументированы, чинятся на 2+):
